@@ -3,22 +3,97 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>3D Forest Walk</title>
+  <title>Genie Tetris</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <div id="overlay">
-    <div class="panel">
-      <h1>Forest Walk</h1>
-      <p>Click the button to start</p>
-      <p>Mouse: look around<br>WASD or Arrow keys: move<br>Shift: sprint</p>
-      <button id="start">Enter</button>
-    </div>
+  <div class="page">
+    <header class="top-bar">
+      <h1 class="logo">Genie Tetris</h1>
+      <div class="controls-hint">
+        <span>← →: move</span>
+        <span>↑ or X: rotate</span>
+        <span>↓: soft drop</span>
+        <span>Space: hard drop</span>
+        <span>C: hold piece</span>
+        <span>P or Esc: pause</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="playfield-panel" aria-label="Tetris board">
+        <canvas id="board" width="300" height="600" aria-label="Tetris playfield"></canvas>
+
+        <div class="floating-status">
+          <div id="status-text"></div>
+        </div>
+
+        <div class="mobile-controls" aria-label="Touch controls">
+          <button class="btn touch" data-action="left">←</button>
+          <button class="btn touch" data-action="rotate">⟳</button>
+          <button class="btn touch" data-action="right">→</button>
+          <button class="btn touch" data-action="soft">↓</button>
+          <button class="btn touch primary" data-action="hard">⤓</button>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Game info">
+        <div class="card stats">
+          <h2>Stats</h2>
+          <div class="stat-row">
+            <span>Score</span>
+            <span id="score">0</span>
+          </div>
+          <div class="stat-row">
+            <span>Lines</span>
+            <span id="lines">0</span>
+          </div>
+          <div class="stat-row">
+            <span>Level</span>
+            <span id="level">1</span>
+          </div>
+        </div>
+
+        <div class="card previews">
+          <div class="preview-group">
+            <h2>Next</h2>
+            <canvas id="next" width="96" height="96" aria-label="Next piece"></canvas>
+          </div>
+          <div class="preview-group">
+            <h2>Hold</h2>
+            <canvas id="hold" width="96" height="96" aria-label="Held piece"></canvas>
+          </div>
+        </div>
+
+        <div class="card controls-card">
+          <h2>Controls</h2>
+          <ul>
+            <li><kbd>←</kbd>/<kbd>→</kbd> Move</li>
+            <li><kbd>↑</kbd> or <kbd>X</kbd> Rotate</li>
+            <li><kbd>↓</kbd> Soft drop</li>
+            <li><kbd>Space</kbd> Hard drop</li>
+            <li><kbd>C</kbd> Hold piece</li>
+            <li><kbd>P</kbd> or <kbd>Esc</kbd> Pause</li>
+          </ul>
+        </div>
+
+        <div class="card actions">
+          <button id="btn-start" class="btn primary wide">New Game</button>
+          <button id="btn-pause" class="btn ghost wide">Pause</button>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="bottom-bar">
+      <span>Classic Tetris, reimagined in vanilla JS.</span>
+    </footer>
   </div>
 
-  <div id="hud" aria-label="HUD">
-    <div id="stamina" aria-label="Stamina bar">
-      <div id="stamina-fill"></div>
+  <div id="modal-backdrop" hidden>
+    <div class="modal">
+      <h2 id="modal-title">Genie Tetris</h2>
+      <p id="modal-message"></p>
+      <button id="modal-primary" class="btn primary wide">Start</button>
     </div>
   </div>
 
