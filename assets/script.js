@@ -51,6 +51,8 @@ scene.add(ground);
 const treeFootprints = [];
 // Also track rocks for collisions
 const rockFootprints = [];
+// Track bushes for collisions
+const bushFootprints = [];
 
 // Soft blob shadow texture used for cheap tree shadows
 function createShadowTexture() {
@@ -648,6 +650,142 @@ function addRocksInstanced(rockCount = 1200) {
 addForestInstanced(4000);
 addRocksInstanced(1200);
 
+function addBushesInstanced(bushCount = 2000) {
+  const group = new THREE.Group();
+
+  // Simple low poly bush made from squashed spheres
+  const bushGeo = new THREE.SphereGeometry(1, 10, 8);
+  const bushMatDark = new THREE.MeshStandardMaterial({ color: 0x265c31, roughness: 0.9 });
+  const bushMatBright = new THREE.MeshStandardMaterial({ color: 0x3b7f3e, roughness: 0.9 });
+
+  const matsDark = [];
+  const matsBright = [];
+
+  const tmp = new THREE.Object3D();
+  const push = (arr, x, y, z, sx, sy, sz, ry) => {
+    tmp.position.set(x, y, z);
+    tmp.rotation.set(0, ry, 0);
+    tmp.scale.set(sx, sy, sz);
+    tmp.updateMatrix();
+    arr.push(tmp.matrix.clone());
+  };
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  // Build a spatial grid using existing tree and rock footprints
+  const CELL_SIZE = 10;
+  const idx = v => Math.floor(v / CELL_SIZE);
+  const key = (ix, iz) => ix + ',' + iz;
+  const grid = new Map();
+
+  function insertExisting(p) {
+    const ix = idx(p.x);
+    const iz = idx(p.z);
+    const k = key(ix, iz);
+    if (!grid.has(k)) grid.set(k, []);
+    grid.get(k).push(p);
+  }
+
+  for (const p of treeFootprints) insertExisting(p);
+  for (const p of rockFootprints) insertExisting(p);
+
+  function canPlace(x, z, r) {
+    const ix = idx(x);
+    const iz = idx(z);
+    const range = Math.ceil((r + 8) / CELL_SIZE);
+    for (let dx = -range; dx <= range; dx++) {
+      for (let dz = -range; dz <= range; dz++) {
+        const k = key(ix + dx, iz + dz);
+        const cell = grid.get(k);
+        if (!cell) continue;
+        for (let i = 0; i < cell.length; i++) {
+          const p = cell[i];
+          const minDist = r + p.r;
+          const dxp = x - p.x;
+          const dzp = z - p.z;
+          if ((dxp * dxp + dzp * dzp) < (minDist * minDist)) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function insertBush(x, z, r) {
+    const ix = idx(x);
+    const iz = idx(z);
+    const k = key(ix, iz);
+    if (!grid.has(k)) grid.set(k, []);
+    const fp = { x, z, r };
+    grid.get(k).push(fp);
+    bushFootprints.push(fp);
+  }
+
+  let placed = 0;
+  let attempts = 0;
+  const MAX_ATTEMPTS = bushCount * 25;
+
+  while (placed < bushCount && attempts < MAX_ATTEMPTS) {
+    attempts++;
+
+    const x = (Math.random() - 0.5) * (GROUND_SIZE - 80);
+    const z = (Math.random() - 0.5) * (GROUND_SIZE - 80);
+
+    // Preserve a clear area near the spawn
+    const minRadius = 30;
+    if (Math.hypot(x, z) < minRadius) continue;
+
+    // Bush footprint radius
+    const radius = rand(2.5, 5.0);
+
+    if (!canPlace(x, z, radius)) continue;
+
+    const ry = rand(0, Math.PI * 2);
+
+    // Slight vertical offset so bushes sit on the ground
+    const y = radius * 0.35;
+
+    // Make each bush from 2–3 overlapping spheres for a fuller shape
+    const lobes = 2 + Math.floor(Math.random() * 2);
+    const baseScale = radius * 0.9;
+    for (let i = 0; i < lobes; i++) {
+      const offsetR = radius * 0.25;
+      const ang = rand(0, Math.PI * 2);
+      const ox = Math.cos(ang) * offsetR;
+      const oz = Math.sin(ang) * offsetR;
+      const sx = baseScale * rand(0.8, 1.2);
+      const sy = baseScale * rand(0.45, 0.65); // flattened vertically
+      const sz = baseScale * rand(0.8, 1.2);
+      const targetArr = (i === 0 || Math.random() < 0.5) ? matsDark : matsBright;
+      push(targetArr, x + ox, y, z + oz, sx, sy, sz, ry + rand(-0.4, 0.4));
+    }
+
+    insertBush(x, z, radius);
+    placed++;
+  }
+
+  function build(geo, mat, matrices) {
+    if (!matrices.length) return null;
+    const mesh = new THREE.InstancedMesh(geo, mat, matrices.length);
+    for (let i = 0; i < matrices.length; i++) {
+      mesh.setMatrixAt(i, matrices[i]);
+    }
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    mesh.instanceMatrix.needsUpdate = true;
+    return mesh;
+  }
+
+  const darkMesh = build(bushGeo, bushMatDark, matsDark);
+  const brightMesh = build(bushGeo, bushMatBright, matsBright);
+
+  if (darkMesh) group.add(darkMesh);
+  if (brightMesh) group.add(brightMesh);
+
+  scene.add(group);
+}
+
+addBushesInstanced(2000);
+
 // --- Simple collision system (2D circle colliders on XZ plane) ---
 const PLAYER_RADIUS = 1.6;           // player collision radius (world units)
 const COLLISION_CELL = 16;           // spatial hash cell size
@@ -672,6 +810,14 @@ function buildCollisionGrid() {
   // Insert rocks
   for (let i = 0; i < rockFootprints.length; i++) {
     const p = rockFootprints[i];
+    const k = cKey(cIndex(p.x), cIndex(p.z));
+    if (!collisionGrid.has(k)) collisionGrid.set(k, []);
+    collisionGrid.get(k).push(p);
+  }
+
+  // Insert bushes
+  for (let i = 0; i < bushFootprints.length; i++) {
+    const p = bushFootprints[i];
     const k = cKey(cIndex(p.x), cIndex(p.z));
     if (!collisionGrid.has(k)) collisionGrid.set(k, []);
     collisionGrid.get(k).push(p);
