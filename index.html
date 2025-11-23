@@ -1,27 +1,92 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>3D Forest Walk</title>
+  <meta charset="UTF-8">
+  <title>Pixel Quest: Quiz Adventure</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <div id="overlay">
-    <div class="panel">
-      <h1>Forest Walk</h1>
-      <p>Click the button to start</p>
-      <p>Mouse: look around<br>WASD or Arrow keys: move<br>Shift: sprint</p>
-      <button id="start">Enter</button>
+  <div id="game-shell">
+    <div id="game-wrapper">
+      <canvas id="game" tabindex="0" aria-label="Pixel Quest game canvas"></canvas>
+
+      <div id="hud" aria-label="HUD">
+        <div class="hud-top">
+          <div class="hud-section">
+            <div class="hud-label">Skor: <span id="hud-score">0</span></div>
+            <div class="hud-label">Waktu: <span id="hud-time">0.0</span>s</div>
+          </div>
+          <div class="hud-section hud-section-right">
+            <div class="hud-label">Nyawa: <span id="hud-lives"></span></div>
+            <div class="hud-label">Item: <span id="hud-items">-</span></div>
+          </div>
+        </div>
+        <div id="hud-message" class="hud-message"></div>
+      </div>
+
+      <div id="start-screen" class="overlay">
+        <div class="panel">
+          <h1>Pixel Quest: Quiz Adventure</h1>
+          <p class="subtitle">Game edukasi 2D bergaya pixel dengan puzzle dan kuis.</p>
+          <ul class="start-list">
+            <li>Gerak: A / D atau ← / →</li>
+            <li>Lompat: W atau Spasi</li>
+            <li>Interaksi: E</li>
+          </ul>
+          <button id="btn-start-game" class="primary">Mulai Petualangan</button>
+          <button id="btn-show-leaderboard" class="secondary">Lihat Leaderboard</button>
+        </div>
+      </div>
+
+      <div id="quiz-overlay" class="overlay hidden" aria-hidden="true">
+        <div class="panel quiz-panel">
+          <h2 id="quiz-title"></h2>
+          <p id="quiz-question" class="quiz-question"></p>
+          <div id="quiz-choices" class="quiz-choices"></div>
+          <p id="quiz-feedback" class="quiz-feedback"></p>
+          <button id="quiz-close-btn" class="primary hidden">Lanjut</button>
+        </div>
+      </div>
+
+      <div id="finish-overlay" class="overlay hidden" aria-hidden="true">
+        <div class="panel finish-panel">
+          <h2>Petualangan Selesai!</h2>
+          <p>Skor akhir: <span id="finish-score">0</span></p>
+          <p>Waktu: <span id="finish-time">0.0</span>s</p>
+          <div class="name-entry">
+            <label for="finish-name-input">Nama untuk leaderboard:</label>
+            <input id="finish-name-input" maxlength="12" placeholder="Namamu">
+            <button id="finish-save-btn" class="primary">Simpan ke Leaderboard</button>
+          </div>
+          <div class="finish-actions">
+            <button id="finish-restart-btn" class="secondary">Main Lagi</button>
+            <button id="finish-view-leaderboard-btn" class="secondary">Lihat Leaderboard</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="leaderboard-overlay" class="overlay hidden" aria-hidden="true">
+        <div class="panel leaderboard-panel">
+          <h2>Leaderboard</h2>
+          <ol id="leaderboard-list" class="leaderboard-list"></ol>
+          <button id="leaderboard-close-btn" class="secondary">Tutup</button>
+        </div>
+      </div>
+
+      <div id="touch-controls" aria-label="Kontrol sentuh">
+        <div class="touch-left-right">
+          <button id="btn-left" class="touch-btn">◀</button>
+          <button id="btn-right" class="touch-btn">▶</button>
+        </div>
+        <div class="touch-jump-interact">
+          <button id="btn-jump" class="touch-btn">⭡</button>
+          <button id="btn-interact" class="touch-btn">E</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div id="hud" aria-label="HUD">
-    <div id="stamina" aria-label="Stamina bar">
-      <div id="stamina-fill"></div>
-    </div>
-  </div>
-
-  <script type="module" src="assets/script.js"></script>
+  <script src="assets/script.js"></script>
 </body>
 </html>
