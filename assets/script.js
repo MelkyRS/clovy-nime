@@ -237,40 +237,46 @@
     }
   ];
 
-  // Map for quick lookup + optional override from CMS (localStorage)
+  // Map for quick lookup and optional override from backend API
   var animeById = {};
-  for (var i = 0; i &lt; animeList.length; i++) {
-    animeById[animeList[i].id] = animeList[i];
-  }
 
-  var ANIME_STORAGE_KEY = "anime-cms-data-v1";
-
-  function applyAnimeListFromStorage(list) {
-    if (!Array.isArray(list) || !list.length) return;
-    animeList = list;
+  function rebuildAnimeIndex() {
     animeById = {};
-    for (var i = 0; i &lt; animeList.length; i++) {
+    for (var i = 0; i < animeList.length; i++) {
       var item = animeList[i];
-      if (item &amp;&amp; item.id) {
+      if (item && item.id) {
         animeById[item.id] = item;
       }
     }
   }
 
-  function loadAnimeFromStorage() {
-    try {
-      if (!("localStorage" in window)) return;
-      var raw = window.localStorage.getItem(ANIME_STORAGE_KEY);
-      if (!raw) return;
-      var parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      applyAnimeListFromStorage(parsed);
-    } catch (e) {
-      // ignore parse/storage errors, fall back to built-in data
-    }
+  rebuildAnimeIndex();
+
+  var API_BASE = "/api";
+
+  function applyAnimeListFromApi(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    animeList = list;
+    rebuildAnimeIndex();
   }
 
-  loadAnimeFromStorage();
+  function fetchAnimeFromApi() {
+    if (!("fetch" in window)) {
+      return Promise.resolve();
+    }
+    return fetch(API_BASE + "/anime")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("Gagal memuat data anime dari API");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (Array.isArray(data) && data.length) {
+          applyAnimeListFromApi(data);
+        }
+      });
+  }
 
   // ------------------------------------------------------------
   // DOM helpers
@@ -974,22 +980,30 @@
   // ------------------------------------------------------------
 
   function init() {
-    initHero();
+    fetchAnimeFromApi()
+      .catch(function () {
+        // Jika API gagal, gunakan data bawaan di script.
+      })
+      .finally(function () {
+        rebuildAnimeIndex();
 
-    renderSection("ongoing", "ongoing");
-    renderSection("finished", "finished");
-    renderSection("movie", "movie");
-    renderMostViewedGrid();
+        initHero();
 
-    renderEpisodeComments();
-    renderAnimeComments();
+        renderSection("ongoing", "ongoing");
+        renderSection("finished", "finished");
+        renderSection("movie", "movie");
+        renderMostViewedGrid();
 
-    initSearch();
-    initFilterButtons();
-    initGenreMenu();
-    initNavScroll();
-    initModals();
-    initChat();
+        renderEpisodeComments();
+        renderAnimeComments();
+
+        initSearch();
+        initFilterButtons();
+        initGenreMenu();
+        initNavScroll();
+        initModals();
+        initChat();
+      });
   }
 
   if (document.readyState === "loading") {

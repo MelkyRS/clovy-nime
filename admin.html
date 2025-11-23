@@ -149,11 +149,32 @@
 
     <main class="admin-main">
       <div class="admin-header">
-        <h1>CMS Anime (Browser)</h1>
+        <h1>CMS Anime (Admin)</h1>
         <p class="admin-small">
-          Data disimpan di <strong>localStorage</strong> browser ini saja. Untuk multi-admin/online, butuh backend.
+          Kelola daftar anime melalui API backend. Pastikan server Node.js berjalan.
         </p>
       </div>
+
+      <section class="admin-card" aria-label="Login admin" id="admin-login-card">
+        <h2>Login Admin</h2>
+        <p class="admin-small">Masuk untuk mengelola data anime.</p>
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label for="login-username">Username</label>
+            <input id="login-username" type="text" data-admin-login="username" value="admin" />
+          </div>
+          <div class="admin-field">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" data-admin-login="password" />
+          </div>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="button button--primary" data-admin-action="login">
+            Login
+          </button>
+          <span class="admin-small" id="admin-login-status"></span>
+        </div>
+      </section>
 
       <div class="admin-grid">
         <section class="admin-card" aria-label="Form anime">
@@ -276,8 +297,8 @@
             <button type="button" class="button button--ghost" data-admin-action="reset-form">
               Form Baru
             </button>
-            <button type="button" class="button button--ghost" data-admin-action="reset-storage">
-              Reset ke Data Default
+            <button type="button" class="button button--ghost" data-admin-action="reload">
+              Muat Ulang Daftar
             </button>
           </div>
         </section>
@@ -294,7 +315,7 @@
 
     <footer class="site-footer">
       <div class="footer-inner">
-        <span>Admin CMS contoh. Data disimpan lokal di browser ini.</span>
+        <span>Admin CMS contoh. Terhubung ke backend API.</span>
       </div>
     </footer>
   </div>

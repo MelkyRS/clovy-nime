@@ -1,0 +1,17 @@
+{
+  "name": "anime-portal",
+  "version": "1.0.0",
+  "description": "Anime Portal dengan backend API dan panel admin",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "3.0.3",
+    "cors": "2.8.5",
+    "express": "5.1.0",
+    "jsonwebtoken": "9.0.2",
+    "sqlite3": "5.1.7"
+  }
+}

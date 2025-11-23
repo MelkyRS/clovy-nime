@@ -1,7 +1,11 @@
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "anime-cms-data-v1";
+  var API_BASE = "/api";
+  var TOKEN_KEY = "anime-admin-token";
+  var token = null;
+  var currentEditingId = null;
+  var currentList = [];
 
   function $(selector) {
     return document.querySelector(selector);
@@ -15,10 +19,40 @@
     return document.querySelector("[data-admin-list]");
   }
 
+  function getLoginField(name) {
+    return document.querySelector('[data-admin-login="' + name + '"]');
+  }
+
+  function setAuthToken(newToken) {
+    token = newToken || null;
+    try {
+      if (!("sessionStorage" in window)) return;
+      if (token) {
+        window.sessionStorage.setItem(TOKEN_KEY, token);
+      } else {
+        window.sessionStorage.removeItem(TOKEN_KEY);
+      }
+    } catch (e) {
+      // ignore storage errors
+    }
+  }
+
+  function restoreToken() {
+    try {
+      if (!("sessionStorage" in window)) return;
+      var stored = window.sessionStorage.getItem(TOKEN_KEY);
+      if (stored) {
+        token = stored;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   function readForm() {
     var data = {};
     var fields = getFields();
-    for (var i = 0; i &lt; fields.length; i++) {
+    for (var i = 0; i < fields.length; i++) {
       var el = fields[i];
       var key = el.getAttribute("data-admin-field");
       if (!key) continue;
@@ -29,7 +63,6 @@
       }
     }
 
-    // Normalisasi tipe
     if (data.id) data.id = String(data.id).trim();
     if (data.title) data.title = String(data.title).trim();
     if (data.altTitle) data.altTitle = String(data.altTitle).trim();
@@ -38,32 +71,32 @@
     if (data.section) data.section = String(data.section).trim();
     if (data.status) data.status = String(data.status).trim();
 
-    if (data.score !== "" &amp;&amp; data.score != null) {
+    if (data.score !== "" && data.score != null) {
       data.score = parseFloat(data.score);
       if (isNaN(data.score)) data.score = null;
     } else {
       data.score = null;
     }
 
-    if (data.episodesAired !== "" &amp;&amp; data.episodesAired != null) {
+    if (data.episodesAired !== "" && data.episodesAired != null) {
       data.episodesAired = parseInt(data.episodesAired, 10);
       if (isNaN(data.episodesAired)) data.episodesAired = null;
     } else {
       data.episodesAired = null;
     }
 
-    if (data.episodesTotal !== "" &amp;&amp; data.episodesTotal != null) {
+    if (data.episodesTotal !== "" && data.episodesTotal != null) {
       data.episodesTotal = parseInt(data.episodesTotal, 10);
       if (isNaN(data.episodesTotal)) data.episodesTotal = null;
     } else {
       data.episodesTotal = null;
     }
 
-    if (data.viewsSeason !== "" &amp;&amp; data.viewsSeason != null) {
+    if (data.viewsSeason !== "" && data.viewsSeason != null) {
       data.viewsSeason = parseInt(data.viewsSeason, 10);
-      if (isNaN(data.viewsSeason)) data.viewsSeason = null;
+      if (isNaN(data.viewsSeason)) data.viewsSeason = 0;
     } else {
-      data.viewsSeason = null;
+      data.viewsSeason = 0;
     }
 
     if (data.genres) {
@@ -88,7 +121,7 @@
 
   function writeForm(anime) {
     var fields = getFields();
-    for (var i = 0; i &lt; fields.length; i++) {
+    for (var i = 0; i < fields.length; i++) {
       var el = fields[i];
       var key = el.getAttribute("data-admin-field");
       if (!key) continue;
@@ -131,46 +164,9 @@
       featured: false,
       colorKey: ""
     });
+    currentEditingId = null;
     var status = $("#admin-status");
     if (status) status.textContent = "Mode: tambah baru";
-  }
-
-  function loadStorage() {
-    try {
-      if (!("localStorage" in window)) return [];
-      var raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      var parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed;
-    } catch (e) {
-      return [];
-    }
-  }
-
-  function saveStorage(list) {
-    try {
-      if (!("localStorage" in window)) return;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    } catch (e) {
-      // ignore quota errors
-    }
-  }
-
-  function upsertAnime(list, anime) {
-    var idx = -1;
-    for (var i = 0; i &lt; list.length; i++) {
-      if (list[i].id === anime.id) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx === -1) {
-      list.push(anime);
-    } else {
-      list[idx] = anime;
-    }
-    return list;
   }
 
   function validateAnime(anime) {
@@ -186,35 +182,44 @@
     return null;
   }
 
-  function renderList() {
+  function renderListFromState() {
     var container = getListContainer();
     if (!container) return;
-    var list = loadStorage();
     container.innerHTML = "";
 
     var countLabel = $("#admin-count");
+
+    if (!token) {
+      if (countLabel) countLabel.textContent = "Harus login";
+      var info = document.createElement("p");
+      info.className = "admin-small";
+      info.textContent = "Masuk sebagai admin untuk melihat dan mengubah daftar anime.";
+      container.appendChild(info);
+      return;
+    }
+
+    var list = currentList || [];
     if (countLabel) {
-      countLabel.textContent = list.length ? list.length + " judul" : "Belum ada data custom";
+      countLabel.textContent = list.length ? list.length + " judul" : "Belum ada data";
     }
 
     if (!list.length) {
       var empty = document.createElement("p");
       empty.className = "admin-small";
-      empty.textContent = "Belum ada anime di localStorage. Simpan dari form untuk mengganti data default.";
+      empty.textContent = "Belum ada anime di database. Tambah dari form di sebelah kiri.";
       container.appendChild(empty);
       return;
     }
 
-    // urutkan by title
     list.sort(function (a, b) {
       var ta = (a.title || "").toLowerCase();
       var tb = (b.title || "").toLowerCase();
-      if (ta &lt; tb) return -1;
-      if (ta &gt; tb) return 1;
+      if (ta < tb) return -1;
+      if (ta > tb) return 1;
       return 0;
     });
 
-    for (var i = 0; i &lt; list.length; i++) {
+    for (var i = 0; i < list.length; i++) {
       (function (anime) {
         var row = document.createElement("div");
         row.className = "admin-list-item";
@@ -253,6 +258,7 @@
         editBtn.addEventListener("click", function (e) {
           e.stopPropagation();
           writeForm(anime);
+          currentEditingId = anime.id;
           var status = $("#admin-status");
           if (status) status.textContent = "Mode: edit — " + (anime.title || anime.id);
         });
@@ -263,16 +269,35 @@
         deleteBtn.textContent = "Hapus";
         deleteBtn.addEventListener("click", function (e) {
           e.stopPropagation();
-          if (!window.confirm("Yakin ingin menghapus \"" + (anime.title || anime.id) + "\" dari data lokal?")) {
+          if (!window.confirm('Yakin ingin menghapus "' + (anime.title || anime.id) + '" dari database?')) {
             return;
           }
-          var current = loadStorage();
-          var filtered = [];
-          for (var j = 0; j &lt; current.length; j++) {
-            if (current[j].id !== anime.id) filtered.push(current[j]);
+          if (!token) {
+            window.alert("Harus login dulu.");
+            return;
           }
-          saveStorage(filtered);
-          renderList();
+          fetch(API_BASE + "/admin/anime/" + encodeURIComponent(anime.id), {
+            method: "DELETE",
+            headers: {
+              Authorization: "Bearer " + token
+            }
+          })
+            .then(function (res) {
+              if (res.status === 401) {
+                setAuthToken(null);
+                throw new Error("Sesi login berakhir. Silakan login lagi.");
+              }
+              if (!res.ok && res.status !== 204) {
+                throw new Error("Gagal menghapus (status " + res.status + ")");
+              }
+              currentList = currentList.filter(function (item) {
+                return item.id !== anime.id;
+              });
+              renderListFromState();
+            })
+            .catch(function (err) {
+              window.alert(err.message || "Gagal menghapus data.");
+            });
         });
 
         actions.appendChild(editBtn);
@@ -282,6 +307,7 @@
         row.appendChild(actions);
         row.addEventListener("click", function () {
           writeForm(anime);
+          currentEditingId = anime.id;
           var status = $("#admin-status");
           if (status) status.textContent = "Mode: edit — " + (anime.title || anime.id);
         });
@@ -291,13 +317,109 @@
     }
   }
 
+  function loadAnimeList() {
+    var container = getListContainer();
+    var countLabel = $("#admin-count");
+    if (!container) return Promise.resolve();
+
+    if (!token) {
+      renderListFromState();
+      return Promise.resolve();
+    }
+
+    if (countLabel) countLabel.textContent = "Memuat...";
+    container.innerHTML = "";
+
+    return fetch(API_BASE + "/admin/anime", {
+      headers: {
+        Authorization: "Bearer " + token
+      }
+    })
+      .then(function (res) {
+        if (res.status === 401) {
+          setAuthToken(null);
+          throw new Error("Sesi login berakhir. Silakan login lagi.");
+        }
+        if (!res.ok) {
+          throw new Error("Gagal memuat data (status " + res.status + ")");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (!Array.isArray(data)) data = [];
+        currentList = data;
+        renderListFromState();
+      })
+      .catch(function (err) {
+        if (countLabel) countLabel.textContent = "Gagal memuat data: " + err.message;
+      });
+  }
+
+  function handleLogin() {
+    var usernameInput = getLoginField("username");
+    var passwordInput = getLoginField("password");
+    var statusEl = $("#admin-login-status");
+
+    var username = usernameInput ? String(usernameInput.value || "").trim() : "";
+    var password = passwordInput ? String(passwordInput.value || "") : "";
+
+    if (!username || !password) {
+      window.alert("Username dan password wajib diisi.");
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = "Mengirim...";
+
+    fetch(API_BASE + "/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username: username, password: password })
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          return res
+            .json()
+            .catch(function () {
+              return { error: "Login gagal" };
+            })
+            .then(function (body) {
+              throw new Error(body.error || "Login gagal");
+            });
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data || !data.token) {
+          throw new Error("Token tidak diterima dari server.");
+        }
+        setAuthToken(data.token);
+        if (statusEl) statusEl.textContent = "Login berhasil";
+        var loginCard = document.getElementById("admin-login-card");
+        if (loginCard) {
+          loginCard.style.display = "none";
+        }
+        return loadAnimeList();
+      })
+      .catch(function (err) {
+        setAuthToken(null);
+        if (statusEl) statusEl.textContent = err.message || "Login gagal";
+      });
+  }
+
   function initEvents() {
     var saveBtn = document.querySelector("[data-admin-action='save']");
     var resetFormBtn = document.querySelector("[data-admin-action='reset-form']");
-    var resetStorageBtn = document.querySelector("[data-admin-action='reset-storage']");
+    var reloadBtn = document.querySelector("[data-admin-action='reload']");
+    var loginBtn = document.querySelector("[data-admin-action='login']");
 
     if (saveBtn) {
       saveBtn.addEventListener("click", function () {
+        if (!token) {
+          window.alert("Harus login dulu.");
+          return;
+        }
         var anime = readForm();
         var error = validateAnime(anime);
         if (error) {
@@ -305,20 +427,47 @@
           return;
         }
 
-        // jika featured, pastikan yang lain tidak featured
-        var list = loadStorage();
-        if (anime.featured) {
-          for (var i = 0; i &lt; list.length; i++) {
-            list[i].featured = list[i].id === anime.id;
-          }
-        }
+        var isEditing = !!currentEditingId;
+        var method = isEditing ? "PUT" : "POST";
+        var url = API_BASE + "/admin/anime" + (isEditing ? "/" + encodeURIComponent(currentEditingId) : "");
 
-        list = upsertAnime(list, anime);
-        saveStorage(list);
-        renderList();
-        var status = $("#admin-status");
-        if (status) status.textContent = "Mode: edit — " + (anime.title || anime.id);
-        window.alert("Data anime tersimpan ke localStorage. Buka / refresh halaman utama untuk melihat perubahan.");
+        fetch(url, {
+          method: method,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + token
+          },
+          body: JSON.stringify(anime)
+        })
+          .then(function (res) {
+            if (res.status === 401) {
+              setAuthToken(null);
+              throw new Error("Sesi login berakhir. Silakan login lagi.");
+            }
+            if (!res.ok) {
+              return res
+                .json()
+                .catch(function () {
+                  return { error: "Gagal menyimpan data." };
+                })
+                .then(function (body) {
+                  throw new Error(body.error || "Gagal menyimpan data.");
+                });
+            }
+            return res.json().catch(function () {
+              return {};
+            });
+          })
+          .then(function () {
+            currentEditingId = anime.id;
+            var status = $("#admin-status");
+            if (status) status.textContent = "Mode: edit — " + (anime.title || anime.id);
+            window.alert("Data anime tersimpan di database backend.");
+            return loadAnimeList();
+          })
+          .catch(function (err) {
+            window.alert(err.message || "Gagal menyimpan data.");
+          });
       });
     }
 
@@ -328,33 +477,32 @@
       });
     }
 
-    if (resetStorageBtn) {
-      resetStorageBtn.addEventListener("click", function () {
-        if (
-          !window.confirm(
-            "Ini akan menghapus seluruh data anime yang tersimpan di localStorage dan kembali ke data default kode.\nLanjutkan?"
-          )
-        ) {
-          return;
-        }
-        try {
-          if ("localStorage" in window) {
-            window.localStorage.removeItem(STORAGE_KEY);
-          }
-        } catch (e) {
-          // ignore
-        }
-        clearForm();
-        renderList();
-        window.alert("Data lokal dihapus. Beranda akan kembali menggunakan data bawaan.");
+    if (reloadBtn) {
+      reloadBtn.addEventListener("click", function () {
+        loadAnimeList();
+      });
+    }
+
+    if (loginBtn) {
+      loginBtn.addEventListener("click", function () {
+        handleLogin();
       });
     }
   }
 
   function init() {
     clearForm();
-    renderList();
     initEvents();
+    restoreToken();
+    if (token) {
+      var loginCard = document.getElementById("admin-login-card");
+      if (loginCard) {
+        loginCard.style.display = "none";
+      }
+      loadAnimeList();
+    } else {
+      renderListFromState();
+    }
   }
 
   if (document.readyState === "loading") {
