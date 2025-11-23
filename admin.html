@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin CMS Anime</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="assets/style.css" />
+  <style>
+    .admin-main {
+      max-width: 1100px;
+      margin: 1.5rem auto 2rem;
+      padding: 0 1.2rem;
+    }
+    .admin-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: 1rem;
+    }
+    .admin-card {
+      border-radius: 1rem;
+      border: 1px solid #1f2937;
+      background: rgba(15, 23, 42, 0.96);
+      padding: 0.85rem 0.9rem 1rem;
+    }
+    .admin-card h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1.02rem;
+    }
+    .admin-form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.45rem;
+    }
+    .admin-field label {
+      display: block;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-bottom: 0.15rem;
+    }
+    .admin-field input,
+    .admin-field textarea,
+    .admin-field select {
+      width: 100%;
+      padding: 0.4rem 0.6rem;
+      border-radius: 0.55rem;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 0.85rem;
+      resize: vertical;
+      min-height: 2.1rem;
+    }
+    .admin-field textarea {
+      min-height: 80px;
+    }
+    .admin-actions {
+      margin-top: 0.6rem;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .admin-list {
+      max-height: 460px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+    }
+    .admin-list-item {
+      border-radius: 0.7rem;
+      border: 1px solid #1f2937;
+      background: #020617;
+      padding: 0.4rem 0.55rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.4rem;
+      cursor: pointer;
+    }
+    .admin-list-item-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .admin-list-item-title {
+      margin: 0;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .admin-list-item-meta {
+      margin: 0.12rem 0 0;
+      color: #6b7280;
+      font-size: 0.76rem;
+    }
+    .admin-list-item button {
+      font-size: 0.78rem;
+    }
+    .admin-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.12rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid #374151;
+      background: rgba(15, 23, 42, 0.94);
+      font-size: 0.7rem;
+      color: #9ca3af;
+      margin-left: 0.35rem;
+    }
+    .admin-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.6rem;
+      margin-bottom: 0.9rem;
+    }
+    .admin-header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+    .admin-small {
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+    @media (max-width: 900px) {
+      .admin-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .admin-main {
+        padding-inline: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">A</span>
+          <span class="brand-text">Nime<span>Stream</span></span>
+        </div>
+        <nav class="main-nav" aria-label="Navigasi admin">
+          <a class="nav-link" href="index.html">← Kembali ke Beranda</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="admin-main">
+      <div class="admin-header">
+        <h1>CMS Anime (Admin)</h1>
+        <p class="admin-small">
+          Kelola daftar anime melalui API backend. Pastikan server Node.js berjalan.
+        </p>
+      </div>
+
+      <section class="admin-card" aria-label="Login admin" id="admin-login-card">
+        <h2>Login Admin</h2>
+        <p class="admin-small">Masuk untuk mengelola data anime.</p>
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label for="login-username">Username</label>
+            <input id="login-username" type="text" data-admin-login="username" value="admin" />
+          </div>
+          <div class="admin-field">
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" data-admin-login="password" />
+          </div>
+        </div>
+        <div class="admin-actions">
+          <button type="button" class="button button--primary" data-admin-action="login">
+            Login
+          </button>
+          <span class="admin-small" id="admin-login-status"></span>
+        </div>
+      </section>
+
+      <div class="admin-grid">
+        <section class="admin-card" aria-label="Form anime">
+          <h2>Form Anime</h2>
+          <p class="admin-small" id="admin-status">Mode: tambah baru</p>
+
+          <div class="admin-form-grid">
+            <div class="admin-field">
+              <label for="field-id">ID (unik, huruf kecil dan tanda hubung)</label>
+              <input id="field-id" type="text" data-admin-field="id" placeholder="contoh: koutetsujou-no-kabaneri" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-title">Judul</label>
+              <input id="field-title" type="text" data-admin-field="title" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-altTitle">Judul Alternatif</label>
+              <input id="field-altTitle" type="text" data-admin-field="altTitle" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-type">Tipe</label>
+              <select id="field-type" data-admin-field="type">
+                <option value="TV">TV</option>
+                <option value="Movie">Movie</option>
+                <option value="OVA">OVA</option>
+                <option value="ONA">ONA</option>
+                <option value="Special">Special</option>
+                <option value="">(kosong)</option>
+              </select>
+            </div>
+
+            <div class="admin-field">
+              <label for="field-quality">Kualitas</label>
+              <select id="field-quality" data-admin-field="quality">
+                <option value="HD">HD</option>
+                <option value="WEB-DL">WEB-DL</option>
+                <option value="BD">BD</option>
+                <option value="DVD">DVD</option>
+                <option value="">(kosong)</option>
+              </select>
+            </div>
+
+            <div class="admin-field">
+              <label for="field-section">Kategori di beranda</label>
+              <select id="field-section" data-admin-field="section">
+                <option value="ongoing">Sedang Tayang</option>
+                <option value="finished">Selesai Tayang</option>
+                <option value="movie">Film</option>
+              </select>
+            </div>
+
+            <div class="admin-field">
+              <label for="field-status">Status</label>
+              <select id="field-status" data-admin-field="status">
+                <option value="ongoing">ongoing</option>
+                <option value="finished">finished</option>
+              </select>
+            </div>
+
+            <div class="admin-field">
+              <label for="field-score">Skor (angka, mis. 7.25)</label>
+              <input id="field-score" type="number" step="0.01" min="0" max="10" data-admin-field="score" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-epAired">Episode tayang</label>
+              <input id="field-epAired" type="number" min="0" data-admin-field="episodesAired" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-epTotal">Total episode (boleh kosong)</label>
+              <input id="field-epTotal" type="number" min="0" data-admin-field="episodesTotal" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-seasonLabel">Label musim (contoh: Musim Gugur 2025)</label>
+              <input id="field-seasonLabel" type="text" data-admin-field="seasonLabel" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-seasonKey">Key musim (contoh: fall-2025)</label>
+              <input id="field-seasonKey" type="text" data-admin-field="seasonKey" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-views">Jumlah penayangan musim ini</label>
+              <input id="field-views" type="number" min="0" data-admin-field="viewsSeason" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-genres">Genre (pisahkan dengan koma)</label>
+              <input id="field-genres" type="text" data-admin-field="genres" placeholder="Action, Fantasy, Horror" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-color">Tema warna kartu (orange, purple, blue, teal, green, rose, gold)</label>
+              <input id="field-color" type="text" data-admin-field="colorKey" placeholder="orange" />
+            </div>
+
+            <div class="admin-field">
+              <label for="field-description">Deskripsi</label>
+              <textarea id="field-description" data-admin-field="description"></textarea>
+            </div>
+
+            <div class="admin-field">
+              <label>
+                <input type="checkbox" data-admin-field="featured" />
+                Jadikan sebagai anime unggulan di hero
+              </label>
+            </div>
+          </div>
+
+          <div class="admin-actions">
+            <button type="button" class="button button--primary" data-admin-action="save">
+              Simpan Anime
+            </button>
+            <button type="button" class="button button--ghost" data-admin-action="reset-form">
+              Form Baru
+            </button>
+            <button type="button" class="button button--ghost" data-admin-action="reload">
+              Muat Ulang Daftar
+            </button>
+          </div>
+        </section>
+
+        <section class="admin-card" aria-label="Daftar anime">
+          <div class="section-header" style="margin-bottom: 0.5rem;">
+            <h2 class="section-title">Daftar Anime</h2>
+            <span class="admin-small" id="admin-count"></span>
+          </div>
+          <div class="admin-list" data-admin-list></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <span>Admin CMS contoh. Terhubung ke backend API.</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="assets/admin.js"></script>
+</body>
+</html>

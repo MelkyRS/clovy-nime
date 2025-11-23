@@ -1,914 +1,1014 @@
-// 3D Forest Walking Simulator
-// Arrow keys to move, mouse to look around
+(function () {
+  "use strict";
 
-import * as THREE from 'https://esm.sh/three@0.180.0';
-import { PointerLockControls } from 'https://esm.sh/three@0.180.0/examples/jsm/controls/PointerLockControls.js';
-import { mergeVertices } from 'https://esm.sh/three@0.180.0/examples/jsm/utils/BufferGeometryUtils.js';
-import { ConvexGeometry } from 'https://esm.sh/three@0.180.0/examples/jsm/geometries/ConvexGeometry.js';
+  // ------------------------------------------------------------
+  // Data model
+  // ------------------------------------------------------------
 
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
-
-// Scene and camera
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbfd1e5);
-scene.fog = new THREE.Fog(0xbfd1e5, 200, 1200);
-
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-const EYE_HEIGHT = 2;
-camera.position.set(0, EYE_HEIGHT, 0);
-
-// Lighting
-const hemi = new THREE.HemisphereLight(0xffffff, 0x334433, 0.6);
-hemi.position.set(0, 200, 0);
-scene.add(hemi);
-
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(-120, 200, 80);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(2048, 2048);
-dirLight.shadow.camera.left = -200;
-dirLight.shadow.camera.right = 200;
-dirLight.shadow.camera.top = 200;
-dirLight.shadow.camera.bottom = -200;
-scene.add(dirLight);
-
-// Ground
-const GROUND_SIZE = 2000;
-const groundGeo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
-const groundMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b }); // brown
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-// Keep track of tree footprints for later placement of rocks
-const treeFootprints = [];
-// Also track rocks for collisions
-const rockFootprints = [];
-
-// Soft blob shadow texture used for cheap tree shadows
-function createShadowTexture() {
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.5);
-  g.addColorStop(0, 'rgba(0,0,0,0.45)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 4;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// Trees (instanced for performance) — now with multiple species for variety
-function addForestInstanced(treeCount = 4000) {
-  const forest = new THREE.Group();
-
-  // Base unit geometries
-  const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
-  const coneGeo = new THREE.ConeGeometry(1, 1, 10);
-  const sphereGeo = new THREE.SphereGeometry(1, 12, 10);
-
-  // Materials
-  const trunkBrownMat = new THREE.MeshStandardMaterial({ color: 0x7a4a21, roughness: 1.0, metalness: 0.0 }); // pine/deciduous trunk
-  const trunkBirchMat = new THREE.MeshStandardMaterial({ color: 0xe7ded0, roughness: 0.95 });                  // birch trunk
-  const trunkDeadMat  = new THREE.MeshStandardMaterial({ color: 0x6b5b53, roughness: 1.0 });                   // dead wood
-
-  const foliageConiferMat      = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.9 });  // pine
-  const foliageConiferDarkMat  = new THREE.MeshStandardMaterial({ color: 0x1f6d3c, roughness: 0.95 }); // spruce
-  const foliageDeciduousMat    = new THREE.MeshStandardMaterial({ color: 0x3ea24a, roughness: 0.9 });  // deciduous
-  const foliageBirchMat        = new THREE.MeshStandardMaterial({ color: 0x6abd45, roughness: 0.95 }); // birch leaves
-
-  // Transform buffers per species/part
-  const transforms = {
-    trunkBrown: [], trunkBirch: [], trunkDead: [],
-    pineC1: [], pineC2: [], pineC3: [],
-    spruceC1: [], spruceC2: [], spruceC3: [],
-    decidBot: [], decidTop: [],
-    birchBot: [], birchTop: [],
-    shadowBlobs: [],
-  };
-
-  // Helper to push transforms
-  const tmp = new THREE.Object3D();
-  const push = (arr, x, y, z, sx, sy, sz) => {
-    tmp.position.set(x, y, z);
-    tmp.rotation.set(0, 0, 0);
-    tmp.scale.set(sx, sy, sz);
-    tmp.updateMatrix();
-    arr.push(tmp.matrix.clone());
-  };
-
-  // Align blob shadows with the sun direction and offset them accordingly
-  const sunDir = new THREE.Vector3().subVectors(dirLight.target.position, dirLight.position).normalize();
-  const sunDirXZ = new THREE.Vector3(sunDir.x, 0, sunDir.z);
-  let shadowAngleY = 0;
-  let shadowOffsetFactor = 0;
-  if (sunDirXZ.lengthSq() > 1e-6) {
-    sunDirXZ.normalize();
-    shadowAngleY = Math.atan2(sunDirXZ.x, sunDirXZ.z);
-    // Lower sun (smaller |y|) -> longer shadows, but clamp for sanity
-    shadowOffsetFactor = 1.2 / Math.max(0.3, Math.abs(sunDir.y));
-  } else {
-    sunDirXZ.set(1, 0, 0);
-    shadowAngleY = 0;
-    shadowOffsetFactor = 0;
-  }
-
-  const addShadow = (x, z, radius) => {
-    // Slight randomness for more organic look
-    const base = 1.7 * (0.95 + Math.random() * 0.1);
-    const rx = Math.max(2, radius * base);
-    const rz = Math.max(2, radius * (base + shadowOffsetFactor)); // stretch along sun direction
-    const offset = radius * shadowOffsetFactor;
-
-    tmp.position.set(x + sunDirXZ.x * offset, 0.02, z + sunDirXZ.z * offset);
-    tmp.rotation.set(0, shadowAngleY, 0);
-    // Scale in X and Z (ground plane). Keep Y ~1 so it doesn't stretch upward.
-    tmp.scale.set(rx, 1, rz);
-    tmp.updateMatrix();
-    transforms.shadowBlobs.push(tmp.matrix.clone());
-  };
-
-  // Spatial hashing to reduce tree overlaps
-  const CELL_SIZE = 12;
-  const MAX_TREE_RADIUS = 10;
-  const grid = new Map();
-  const cellIndex = (v) => Math.floor(v / CELL_SIZE);
-  const key = (ix, iz) => ix + ',' + iz;
-
-  function canPlaceAt(x, z, r) {
-    const ix = cellIndex(x);
-    const iz = cellIndex(z);
-    const range = Math.ceil((r + MAX_TREE_RADIUS) / CELL_SIZE);
-    for (let dx = -range; dx <= range; dx++) {
-      for (let dz = -range; dz <= range; dz++) {
-        const k = key(ix + dx, iz + dz);
-        const cell = grid.get(k);
-        if (!cell) continue;
-        for (let i = 0; i < cell.length; i++) {
-          const p = cell[i];
-          const minDist = r + p.r;
-          const dxp = x - p.x;
-          const dzp = z - p.z;
-          if ((dxp * dxp + dzp * dzp) < (minDist * minDist)) return false;
-        }
-      }
+  /**
+   * Static example data. Replace with your own API/data layer as needed.
+   * Names are used as examples only; no external streaming is wired in.
+   */
+  var animeList = [
+    {
+      id: "koutetsujou-no-kabaneri",
+      title: "Koutetsujou no Kabaneri",
+      altTitle: "Kabaneri of the Iron Fortress",
+      type: "TV",
+      quality: "HD",
+      section: "ongoing",
+      status: "ongoing",
+      score: 7.2,
+      episodesAired: 7,
+      episodesTotal: 12,
+      seasonLabel: "Musim Semi 2025",
+      seasonKey: "spring-2025",
+      viewsSeason: 120000,
+      genres: ["Action", "Fantasy", "Horror", "Survival"],
+      description:
+        "Di dunia yang dilanda makhluk mirip zombie, umat manusia bertahan di dalam stasiun dan kereta lapis baja.",
+      colorKey: "orange",
+      featured: true
+    },
+    {
+      id: "ao-no-orchestra-season-2",
+      title: "Ao no Orchestra Season 2",
+      altTitle: "Blue Orchestra Season 2",
+      type: "TV",
+      quality: "HD",
+      section: "ongoing",
+      status: "ongoing",
+      score: 7.8,
+      episodesAired: 8,
+      episodesTotal: 21,
+      seasonLabel: "Musim Gugur 2025",
+      seasonKey: "fall-2025",
+      viewsSeason: 90000,
+      genres: ["Drama", "Music", "School"],
+      description:
+        "Orkestra sekolah kembali dengan persaingan baru, lagu yang lebih sulit, dan konflik di antara para pemainnya.",
+      colorKey: "purple"
+    },
+    {
+      id: "uma-musume-cinderella-gray-part-2",
+      title: "Uma Musume: Cinderella Gray Part 2",
+      type: "TV",
+      quality: "HD",
+      section: "ongoing",
+      status: "ongoing",
+      score: 7.1,
+      episodesAired: 6,
+      episodesTotal: 10,
+      seasonLabel: "Musim Gugur 2025",
+      seasonKey: "fall-2025",
+      viewsSeason: 65000,
+      genres: ["Sports", "Drama"],
+      description:
+        "Para horse girl berlatih lebih keras untuk mengejar kemenangan besar berikutnya di lintasan balap.",
+      colorKey: "blue"
+    },
+    {
+      id: "digimon-beatbreak",
+      title: "Digimon Beatbreak",
+      type: "TV",
+      quality: "HD",
+      section: "ongoing",
+      status: "ongoing",
+      score: 7.0,
+      episodesAired: 8,
+      episodesTotal: null,
+      seasonLabel: "Musim Gugur 2025",
+      seasonKey: "fall-2025",
+      viewsSeason: 30000,
+      genres: ["Action", "Adventure"],
+      description:
+        "Pertarungan digital baru dimulai ketika para Digimon muncul mengikuti irama musik yang menggetarkan dunia.",
+      colorKey: "teal"
+    },
+    {
+      id: "henjin-no-salad-bowl",
+      title: "Henjin no Salad Bowl",
+      type: "TV",
+      quality: "BD",
+      section: "finished",
+      status: "finished",
+      score: 7.16,
+      episodesAired: 12,
+      episodesTotal: 12,
+      seasonLabel: "Musim Semi",
+      seasonKey: "spring-2024",
+      viewsSeason: 86749,
+      genres: ["Comedy", "Fantasy"],
+      description:
+        "Seorang pemuda biasa tiba-tiba hidup serumah dengan para penghuni dunia lain yang eksentrik.",
+      colorKey: "green"
+    },
+    {
+      id: "maou-no-ore-ga-dorei-elf",
+      title: "Maou no Ore ga Dorei Elf wo Yome ni Shitanda ga, Dou Medereba Ii?",
+      type: "TV",
+      quality: "BD",
+      section: "finished",
+      status: "finished",
+      score: 7.29,
+      episodesAired: 12,
+      episodesTotal: 12,
+      seasonLabel: "Musim Panas",
+      seasonKey: "summer-2024",
+      viewsSeason: 235199,
+      genres: ["Fantasy", "Romance", "Comedy"],
+      description:
+        "Seorang pria yang dijuluki raja iblis berusaha menjalani kehidupan tenang bersama elf yang ia jadikan istrinya.",
+      colorKey: "rose"
+    },
+    {
+      id: "bang-dream-its-mygo-movie",
+      title: "BanG Dream! It's MyGO!!!!! Movie",
+      type: "Movie",
+      quality: "BD",
+      section: "movie",
+      status: "finished",
+      score: 6.91,
+      episodesAired: 1,
+      episodesTotal: 1,
+      seasonLabel: "Movie",
+      seasonKey: "movie-2025",
+      viewsSeason: 5000,
+      genres: ["Music", "Drama"],
+      description:
+        "Grup MyGO!!!!! naik ke panggung layar lebar dengan penampilan yang menggabungkan luka lama dan harapan baru.",
+      colorKey: "gold"
+    },
+    {
+      id: "higurashi-outbreak",
+      title: "Higurashi no Naku Koro ni Kaku: Outbreak",
+      type: "Movie",
+      quality: "DVD",
+      section: "movie",
+      status: "finished",
+      score: 7.2,
+      episodesAired: 1,
+      episodesTotal: 1,
+      seasonLabel: "Movie",
+      seasonKey: "movie-2013",
+      viewsSeason: 15000,
+      genres: ["Horror", "Mystery", "Supernatural"],
+      description:
+        "Sebuah wabah misterius membuat desa terpencil kembali dipenuhi kecurigaan dan teror tanpa akhir.",
+      colorKey: "blue"
     }
-    return true;
-  }
-
-  function insertAt(x, z, r) {
-    const ix = cellIndex(x);
-    const iz = cellIndex(z);
-    const k = key(ix, iz);
-    if (!grid.has(k)) grid.set(k, []);
-    grid.get(k).push({ x, z, r });
-    // Record globally for later rock placement
-    treeFootprints.push({ x, z, r });
-  }
-
-  // Distribute trees across the ground with a few species
-  let placed = 0;
-  let attempts = 0;
-  const MAX_ATTEMPTS = treeCount * 20;
-  while (placed < treeCount && attempts < MAX_ATTEMPTS) {
-    attempts++;
-
-    const x = (Math.random() - 0.5) * (GROUND_SIZE - 100);
-    const z = (Math.random() - 0.5) * (GROUND_SIZE - 100);
-
-    // Keep a small clear area in the center
-    const minRadius = 20;
-    if (Math.hypot(x, z) < minRadius) continue;
-
-    const r = Math.random();
-
-    if (r < 0.35) {
-      // Pine — classic conifer
-      const trunkH = 5 + Math.random() * 4;
-      const trunkR = 0.25 + Math.random() * 0.15;
-
-      const h1 = trunkH * 1.00, r1 = trunkH * 0.55;
-      const h2 = trunkH * 0.80, r2 = trunkH * 0.45;
-      const h3 = trunkH * 0.60, r3 = trunkH * 0.32;
-
-      // Make conifers generally wider
-      const widthMul = 1.15 + Math.random() * 0.10; // 1.15–1.25
-      const R1 = r1 * widthMul;
-      const R2 = r2 * widthMul;
-      const R3 = r3 * widthMul;
-
-      // Increase overlap between cone sections
-      const overlapBase = h1 * 0.06;   // sink first cone slightly into trunk
-      const overlap12   = h2 * 0.18;   // overlap between cone 1 and 2
-      const overlap23   = h3 * 0.22;   // overlap between cone 2 and 3
-
-      const footR = Math.max(R1, R2, R3) * 0.9;
-      if (!canPlaceAt(x, z, footR)) continue;
-
-      push(transforms.trunkBrown, x, trunkH / 2, z, trunkR, trunkH, trunkR);
-      push(transforms.pineC1, x, trunkH + h1 / 2 - overlapBase,           z, R1, h1, R1);
-      push(transforms.pineC2, x, trunkH + h1 - overlap12 + h2 / 2,        z, R2, h2, R2);
-      push(transforms.pineC3, x, trunkH + h1 + h2 - overlap23 + h3 / 2,   z, R3, h3, R3);
-
-      const shadowR = Math.max(R1, R2, R3) * 1.1;
-      addShadow(x, z, shadowR);
-      insertAt(x, z, footR);
-
-    } else if (r < 0.60) {
-      // Spruce — taller, narrower, darker needles
-      const trunkH = 6.5 + Math.random() * 5;
-      const trunkR = 0.22 + Math.random() * 0.12;
-
-      const h1 = trunkH * 1.30, r1 = trunkH * 0.42;
-      const h2 = trunkH * 1.00, r2 = trunkH * 0.33;
-      const h3 = trunkH * 0.70, r3 = trunkH * 0.24;
-
-      // Make conifers generally wider
-      const widthMul = 1.12 + Math.random() * 0.08; // 1.12–1.20 (slightly subtler than pine)
-      const R1 = r1 * widthMul;
-      const R2 = r2 * widthMul;
-      const R3 = r3 * widthMul;
-
-      // Increase overlap between cone sections
-      const overlapBase = h1 * 0.05;
-      const overlap12   = h2 * 0.16;
-      const overlap23   = h3 * 0.20;
-
-      const footR = Math.max(R1, R2, R3) * 0.9;
-      if (!canPlaceAt(x, z, footR)) continue;
-
-      push(transforms.trunkBrown, x, trunkH / 2, z, trunkR, trunkH, trunkR);
-      push(transforms.spruceC1, x, trunkH + h1 / 2 - overlapBase,         z, R1, h1, R1);
-      push(transforms.spruceC2, x, trunkH + h1 - overlap12 + h2 / 2,      z, R2, h2, R2);
-      push(transforms.spruceC3, x, trunkH + h1 + h2 - overlap23 + h3 / 2, z, R3, h3, R3);
-
-      const shadowR = Math.max(R1, R2, R3) * 1.05;
-      addShadow(x, z, shadowR);
-      insertAt(x, z, footR);
-
-    } else if (r < 0.85) {
-      // Deciduous — rounded canopy
-      const trunkH = 4.5 + Math.random() * 3.5;
-      const trunkR = 0.28 + Math.random() * 0.18;
-
-      // bottom canopy - broad ellipsoid
-      const rB = trunkH * (0.85 + Math.random() * 0.15);
-      const syB = rB * 0.75;
-
-      // top canopy - smaller, slightly taller
-      const rT = trunkH * (0.60 + Math.random() * 0.10);
-      const syT = rT * 0.80;
-
-      const footR = Math.max(rB, rT);
-      if (!canPlaceAt(x, z, footR)) continue;
-
-      push(transforms.trunkBrown, x, trunkH / 2, z, trunkR, trunkH, trunkR);
-      push(transforms.decidBot, x, trunkH + syB * 0.6, z, rB, syB, rB);
-      push(transforms.decidTop, x, trunkH + syB + syT * 0.5, z, rT, syT, rT);
-
-      const shadowR = Math.max(rB, rT) * 1.15;
-      addShadow(x, z, shadowR);
-      insertAt(x, z, footR);
-
-    } else if (r < 0.97) {
-      // Birch — slender white trunk, light green canopy
-      const trunkH = 5 + Math.random() * 3;
-      const trunkR = 0.18 + Math.random() * 0.12;
-
-      const rB = trunkH * (0.70 + Math.random() * 0.15);
-      const syB = rB * 0.60;
-      const rT = trunkH * (0.45 + Math.random() * 0.10);
-      const syT = rT * 0.70;
-
-      const footR = Math.max(rB, rT);
-      if (!canPlaceAt(x, z, footR)) continue;
-
-      push(transforms.trunkBirch, x, trunkH / 2, z, trunkR, trunkH, trunkR);
-      push(transforms.birchBot, x, trunkH + syB * 0.65, z, rB, syB, rB);
-      push(transforms.birchTop, x, trunkH + syB + syT * 0.55, z, rT, syT, rT);
-
-      const shadowR = Math.max(rB, rT) * 1.1;
-      addShadow(x, z, shadowR);
-      insertAt(x, z, footR);
-
-    } else {
-      // Dead tree — trunk only
-      const trunkH = 5 + Math.random() * 5;
-      const trunkR = 0.23 + Math.random() * 0.15;
-
-      const footR = trunkR * 2.0;
-      if (!canPlaceAt(x, z, footR)) continue;
-
-      push(transforms.trunkDead, x, trunkH / 2, z, trunkR, trunkH, trunkR);
-      addShadow(x, z, trunkR * 1.5);
-      insertAt(x, z, footR);
-    }
-
-    placed++;
-  }
-
-  // Helper to build InstancedMeshes from transform arrays
-  function build(geo, mat, matrices, receiveShadow = false) {
-    if (!matrices.length) return null;
-    const mesh = new THREE.InstancedMesh(geo, mat, matrices.length);
-    for (let i = 0; i < matrices.length; i++) {
-      mesh.setMatrixAt(i, matrices[i]);
-    }
-    mesh.castShadow = false; // disabled for perf with thousands of instances
-    mesh.receiveShadow = receiveShadow;
-    mesh.instanceMatrix.needsUpdate = true;
-    return mesh;
-  }
-
-  const meshes = [
-    build(trunkGeo,  trunkBrownMat, transforms.trunkBrown, true),
-    build(trunkGeo,  trunkBirchMat, transforms.trunkBirch, true),
-    build(trunkGeo,  trunkDeadMat,  transforms.trunkDead,  true),
-
-    build(coneGeo,   foliageConiferMat,     transforms.pineC1),
-    build(coneGeo,   foliageConiferMat,     transforms.pineC2),
-    build(coneGeo,   foliageConiferMat,     transforms.pineC3),
-
-    build(coneGeo,   foliageConiferDarkMat, transforms.spruceC1),
-    build(coneGeo,   foliageConiferDarkMat, transforms.spruceC2),
-    build(coneGeo,   foliageConiferDarkMat, transforms.spruceC3),
-
-    build(sphereGeo, foliageDeciduousMat,   transforms.decidBot),
-    build(sphereGeo, foliageDeciduousMat,   transforms.decidTop),
-
-    build(sphereGeo, foliageBirchMat,       transforms.birchBot),
-    build(sphereGeo, foliageBirchMat,       transforms.birchTop),
   ];
 
-  // Build blob shadows — orient geometry on XZ so instances lie flat on ground
-  const shadowGeo = new THREE.PlaneGeometry(1, 1);
-  shadowGeo.rotateX(-Math.PI / 2);
-  const shadowMat = new THREE.MeshBasicMaterial({
-    map: createShadowTexture(),
-    transparent: true,
-    depthWrite: false,
-  });
-  const shadowMesh = build(shadowGeo, shadowMat, transforms.shadowBlobs);
-  if (shadowMesh) {
-    shadowMesh.renderOrder = 1;
-    forest.add(shadowMesh);
-  }
-
-  for (const m of meshes) {
-    if (m) forest.add(m);
-  }
-
-  scene.add(forest);
-}
-
-// Add rocks scattered on the ground, avoiding trees and each other
-function addRocksInstanced(rockCount = 1200) {
-  const group = new THREE.Group();
-
-  // Base geometries (low-poly rocks)
-  let rockGeoA = new THREE.IcosahedronGeometry(1, 0);
-  let rockGeoB = new THREE.IcosahedronGeometry(1, 1);
-
-  // Make rocks flat on the bottom so they sit on the ground
-  function flattenBottom(geo) {
-    const pos = geo.getAttribute('position');
-    const arr = pos.array;
-    for (let i = 0; i < arr.length; i += 3) {
-      if (arr[i + 1] < 0) arr[i + 1] = 0;
+  var episodeComments = [
+    {
+      id: "c-ep-1",
+      animeId: "koutetsujou-no-kabaneri",
+      episode: 7,
+      user: "Edward Elric",
+      timeAgo: "45 menit yang lalu",
+      text: "Tegang dari awal sampai akhir. Pace episodenya pas banget."
+    },
+    {
+      id: "c-ep-2",
+      animeId: "ao-no-orchestra-season-2",
+      episode: 8,
+      user: "Kurumi",
+      timeAgo: "1 jam yang lalu",
+      text: "Latihan orkestra di episode ini bikin merinding."
+    },
+    {
+      id: "c-ep-3",
+      animeId: "digimon-beatbreak",
+      episode: 8,
+      user: "Uzumaki Naruto",
+      timeAgo: "2 jam yang lalu",
+      text: "Suka banget sama konsep battle yang sinkron sama musik."
     }
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-    return geo;
-  }
+  ];
 
-  // Displace vertices along normals (keeps faces stitched) for organic variation
-  function displaceAlongNormals(geo, amplitude = 0.18, yFactor = 0.8) {
-    geo.computeVertexNormals();
-    const pos = geo.getAttribute('position');
-    const nrm = geo.getAttribute('normal');
-    const pArr = pos.array;
-    const nArr = nrm.array;
-    for (let i = 0; i < pArr.length; i += 3) {
-      const amp = amplitude * (0.6 + Math.random() * 0.8);
-      pArr[i]     += nArr[i]     * amp;
-      pArr[i + 1] += nArr[i + 1] * amp * yFactor;
-      pArr[i + 2] += nArr[i + 2] * amp;
+  var animeComments = [
+    {
+      id: "c-anime-1",
+      animeId: "henjin-no-salad-bowl",
+      user: "Izz Naufal",
+      timeAgo: "6 jam yang lalu",
+      score: 7.3,
+      text: "Komedinya ringan tapi karakternya surprisingly hangat."
+    },
+    {
+      id: "c-anime-2",
+      animeId: "maou-no-ore-ga-dorei-elf",
+      user: "Sora",
+      timeAgo: "20 jam yang lalu",
+      score: 7.4,
+      text: "Dinamikanya lucu, tapi ada beberapa momen yang cukup menyentuh."
+    },
+    {
+      id: "c-anime-3",
+      animeId: "bang-dream-its-mygo-movie",
+      user: "Liscia",
+      timeAgo: "1 hari yang lalu",
+      score: 7.0,
+      text: "Konser klimaksnya keren, apalagi dengan visual layar lebar."
     }
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-    return geo;
-  }
+  ];
 
-  // Rebuild as a convex, closed mesh with a flat bottom
-  function toConvexFlatBottom(geo) {
-    const pos = geo.getAttribute('position');
-    const points = [];
-    for (let i = 0; i < pos.count; i++) {
-      points.push(new THREE.Vector3(
-        pos.getX(i),
-        Math.max(0, pos.getY(i)),
-        pos.getZ(i)
-      ));
+  var chatSeed = [
+    {
+      id: "sys-1",
+      author: "Sistem",
+      role: "system",
+      timeAgo: "",
+      text: "Selamat datang di ruang ngobrol contoh. Jaga sopan santun dan hindari spoiler berlebihan."
+    },
+    {
+      id: "chat-1",
+      author: "Kurama",
+      role: "user",
+      timeAgo: "2 menit lalu",
+      text: "Baru selesai nonton episode terbaru, opening-nya nempel di kepala."
+    },
+    {
+      id: "chat-2",
+      author: "Miko",
+      role: "user",
+      timeAgo: "1 menit lalu",
+      text: "Ada rekomendasi anime isekai yang santai?"
     }
-    const convex = new ConvexGeometry(points);
-    convex.computeVertexNormals();
-    return convex;
+  ];
+
+  // Map for quick lookup and optional override from backend API
+  var animeById = {};
+
+  function rebuildAnimeIndex() {
+    animeById = {};
+    for (var i = 0; i < animeList.length; i++) {
+      var item = animeList[i];
+      if (item && item.id) {
+        animeById[item.id] = item;
+      }
+    }
   }
 
-  function prepareRockGeometry(baseGeo, amp, yFactor) {
-    // Merge duplicate vertices so faces stay connected during displacement
-    const merged = mergeVertices(baseGeo, 1e-5);
-    displaceAlongNormals(merged, amp, yFactor);
-    // Build a watertight convex mesh from the displaced points, clamped at y >= 0
-    const convex = toConvexFlatBottom(merged);
-    return convex;
+  rebuildAnimeIndex();
+
+  var API_BASE = "/api";
+
+  function applyAnimeListFromApi(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    animeList = list;
+    rebuildAnimeIndex();
   }
 
-  // Create additional base shapes and vary them
-  let rockGeoC = new THREE.DodecahedronGeometry(1, 0);
-  let rockGeoD = new THREE.BoxGeometry(1.2, 0.7, 1.2, 2, 1, 2); // slab-like
-  let rockGeoE = new THREE.OctahedronGeometry(1, 0);
-
-  // Prepare each shape (weld, displace, flatten)
-  rockGeoA = prepareRockGeometry(rockGeoA, 0.15, 0.7);
-  rockGeoB = prepareRockGeometry(rockGeoB, 0.12, 0.8);
-  rockGeoC = prepareRockGeometry(rockGeoC, 0.15, 0.8);
-  rockGeoD = prepareRockGeometry(rockGeoD, 0.08, 0.6);
-  rockGeoE = prepareRockGeometry(rockGeoE, 0.20, 0.9);
-
-  // Materials (a few subtle color variants)
-  const rockMatA = new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.98, metalness: 0.0, flatShading: true }); // light granite
-  const rockMatB = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.98, metalness: 0.0, flatShading: true }); // dark granite
-  const rockMatC = new THREE.MeshStandardMaterial({ color: 0x7a6e65, roughness: 0.98, metalness: 0.0, flatShading: true }); // brownish
-  const rockMatD = new THREE.MeshStandardMaterial({ color: 0x5f6a58, roughness: 0.98, metalness: 0.0, flatShading: true }); // mossy green-gray
-  const rockMatE = new THREE.MeshStandardMaterial({ color: 0x6b7685, roughness: 0.98, metalness: 0.0, flatShading: true }); // slate
-
-  // Transform arrays per geometry
-  const matsA = [];
-  const matsB = [];
-  const matsC = [];
-  const matsD = [];
-  const matsE = [];
-
-  // Helpers
-  const tmp = new THREE.Object3D();
-  const push = (arr, x, y, z, sx, sy, sz, ry) => {
-    tmp.position.set(x, y, z);
-    tmp.rotation.set(0, ry, 0);
-    tmp.scale.set(sx, sy, sz);
-    tmp.updateMatrix();
-    arr.push(tmp.matrix.clone());
-  };
-  const rand = (a, b) => a + Math.random() * (b - a);
-
-  // Build a spatial grid for trees to quickly reject collisions
-  const CELL_SIZE_TREES = 12;
-  const tCellIndex = (v) => Math.floor(v / CELL_SIZE_TREES);
-  const tKey = (ix, iz) => ix + ',' + iz;
-  const treeGrid = new Map();
-  for (const p of treeFootprints) {
-    const ix = tCellIndex(p.x);
-    const iz = tCellIndex(p.z);
-    const k = tKey(ix, iz);
-    if (!treeGrid.has(k)) treeGrid.set(k, []);
-    treeGrid.get(k).push(p);
+  function fetchAnimeFromApi() {
+    if (!("fetch" in window)) {
+      return Promise.resolve();
+    }
+    return fetch(API_BASE + "/anime")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("Gagal memuat data anime dari API");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (Array.isArray(data) && data.length) {
+          applyAnimeListFromApi(data);
+        }
+      });
   }
 
-  // Rock spatial grid (avoid rock-rock overlaps)
-  const CELL_SIZE_ROCKS = 6;
-  const rCellIndex = (v) => Math.floor(v / CELL_SIZE_ROCKS);
-  const rKey = (ix, iz) => ix + ',' + iz;
-  const rockGrid = new Map();
+  // ------------------------------------------------------------
+  // DOM helpers
+  // ------------------------------------------------------------
 
-  function canPlaceAgainstTrees(x, z, r) {
-    const ix = tCellIndex(x);
-    const iz = tCellIndex(z);
-    const range = Math.ceil((r + 10) / CELL_SIZE_TREES); // 10 ~ typical tree radius
-    for (let dx = -range; dx <= range; dx++) {
-      for (let dz = -range; dz <= range; dz++) {
-        const k = tKey(ix + dx, iz + dz);
-        const cell = treeGrid.get(k);
-        if (!cell) continue;
-        for (let i = 0; i < cell.length; i++) {
-          const p = cell[i];
-          const minDist = r + p.r * 0.8; // small allowance so rocks can be near but not intersect trunks/canopies
-          const dxp = x - p.x;
-          const dzp = z - p.z;
-          if ((dxp * dxp + dzp * dzp) < (minDist * minDist)) return false;
+  function $(selector) {
+    return document.querySelector(selector);
+  }
+
+  function formatNumber(n) {
+    if (typeof n !== "number") return "";
+    return n.toLocaleString("id-ID");
+  }
+
+  function buildBadgeHtml(text, extraClass) {
+    if (!text) return "";
+    var cls = "badge";
+    if (extraClass) cls += " " + extraClass;
+    return '<span class="' + cls + '">' + text + "</span>";
+  }
+
+  function formatEpisodeLabel(anime) {
+    if (!anime) return "";
+    var epLabel = "";
+    if (anime.episodesAired && anime.episodesTotal) {
+      epLabel = "Ep " + anime.episodesAired + " / " + anime.episodesTotal;
+    } else if (anime.episodesAired) {
+      epLabel = "Ep " + anime.episodesAired;
+    }
+    var statusLabel = "";
+    if (anime.status === "finished") statusLabel = "SELESAI";
+    else if (anime.status === "ongoing") statusLabel = "SEDANG TAYANG";
+
+    if (epLabel && statusLabel) return epLabel + " \u2022 " + statusLabel;
+    return epLabel || statusLabel;
+  }
+
+  function createAnimeCard(anime) {
+    var card = document.createElement("article");
+    card.className = "anime-card";
+    card.setAttribute("data-id", anime.id);
+
+    var badges = [];
+    if (anime.type) badges.push(buildBadgeHtml(anime.type, "badge-type"));
+    if (anime.quality) badges.push(buildBadgeHtml(anime.quality, "badge-quality"));
+    if (typeof anime.score === "number") badges.push(buildBadgeHtml(anime.score.toFixed(2), "badge-score"));
+
+    var subtitleParts = [];
+    var epLabel = formatEpisodeLabel(anime);
+    if (epLabel) subtitleParts.push(epLabel);
+    if (typeof anime.viewsSeason === "number") {
+      subtitleParts.push(formatNumber(anime.viewsSeason) + " penayangan");
+    }
+    var subtitle = subtitleParts.join(" \u2022 ");
+
+    var genres = anime.genres || [];
+    var genreChips = [];
+    for (var i = 0; i < genres.length && i < 3; i++) {
+      genreChips.push('<span class="chip chip--small">' + genres[i] + "</span>");
+    }
+
+    var colorKey = anime.colorKey || "orange";
+
+    card.innerHTML =
+      '<div class="anime-card-cover cover-' +
+      colorKey +
+      '">' +
+      '<div class="anime-card-cover-overlay">' +
+      '<span class="anime-card-pill">Tonton</span>' +
+      "</div>" +
+      "</div>" +
+      '<div class="anime-card-body">' +
+      '<div class="anime-card-meta">' +
+      badges.join("") +
+      "</div>" +
+      '<h3 class="anime-card-title">' +
+      anime.title +
+      "</h3>" +
+      '<p class="anime-card-subtitle">' +
+      (subtitle || "") +
+      "</p>" +
+      '<div class="anime-card-genres">' +
+      genreChips.join("") +
+      "</div>" +
+      "</div>";
+
+    card.addEventListener("click", function () {
+      openDetailModal(anime.id);
+    });
+
+    return card;
+  }
+
+  // ------------------------------------------------------------
+  // Hero section
+  // ------------------------------------------------------------
+
+  var heroTitleEl = $('[data-role="hero-title"]');
+  var heroDescriptionEl = $('[data-role="hero-description"]');
+  var heroTagsEl = $('[data-role="hero-tags"]');
+  var heroCoverEl = $('[data-role="hero-cover"]');
+  var heroCoverTitleEl = $('[data-role="hero-cover-title"]');
+  var heroCoverMetaEl = $('[data-role="hero-cover-meta"]');
+  var heroScoreEl = $('[data-role="hero-score"]');
+  var heroEpisodesEl = $('[data-role="hero-episodes"]');
+  var heroSeasonEl = $('[data-role="hero-season"]');
+  var heroWatchBtn = $('[data-role="hero-watch"]');
+  var heroDetailsBtn = $('[data-role="hero-details"]');
+
+  function initHero() {
+    var featured = null;
+    for (var i = 0; i < animeList.length; i++) {
+      if (animeList[i].featured) {
+        featured = animeList[i];
+        break;
+      }
+    }
+    if (!featured && animeList.length) {
+      featured = animeList[0];
+    }
+    if (!featured) return;
+
+    if (heroTitleEl) heroTitleEl.textContent = featured.title;
+    if (heroDescriptionEl) heroDescriptionEl.textContent = featured.description || "";
+
+    if (heroTagsEl) {
+      var tags = [];
+      tags.push(buildBadgeHtml(featured.type, "badge-type"));
+      tags.push(buildBadgeHtml(featured.quality, "badge-quality"));
+      if (typeof featured.score === "number") {
+        tags.push(buildBadgeHtml(featured.score.toFixed(2), "badge-score"));
+      }
+      heroTagsEl.innerHTML = tags.join("");
+    }
+
+    if (heroCoverEl && featured.colorKey) {
+      heroCoverEl.classList.add("cover-" + featured.colorKey);
+    }
+    if (heroCoverTitleEl) heroCoverTitleEl.textContent = featured.title;
+    if (heroCoverMetaEl) heroCoverMetaEl.textContent = formatEpisodeLabel(featured);
+
+    if (heroScoreEl) heroScoreEl.textContent = typeof featured.score === "number" ? featured.score.toFixed(2) : "-";
+    if (heroEpisodesEl) {
+      var totalEp = featured.episodesTotal || featured.episodesAired || 0;
+      heroEpisodesEl.textContent = totalEp ? totalEp + " eps" : "-";
+    }
+    if (heroSeasonEl) heroSeasonEl.textContent = featured.seasonLabel || "-";
+
+    if (heroWatchBtn) {
+      heroWatchBtn.addEventListener("click", function () {
+        var ep = featured.episodesAired || featured.episodesTotal || 1;
+        openPlayerModal(featured, ep);
+      });
+    }
+    if (heroDetailsBtn) {
+      heroDetailsBtn.addEventListener("click", function () {
+        openDetailModal(featured.id);
+      });
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Sections (ongoing, finished, movies, most viewed)
+  // ------------------------------------------------------------
+
+  function renderSection(sectionKey, slotSelector) {
+    var slot = $('[data-slot="' + slotSelector + '"]');
+    if (!slot) return;
+    slot.innerHTML = "";
+    for (var i = 0; i < animeList.length; i++) {
+      if (animeList[i].section === sectionKey) {
+        slot.appendChild(createAnimeCard(animeList[i]));
+      }
+    }
+  }
+
+  function computeMostViewedThisSeason() {
+    var arr = [];
+    for (var i = 0; i < animeList.length; i++) {
+      if (animeList[i].seasonKey === "fall-2025") {
+        arr.push(animeList[i]);
+      }
+    }
+    arr.sort(function (a, b) {
+      var va = typeof a.viewsSeason === "number" ? a.viewsSeason : 0;
+      var vb = typeof b.viewsSeason === "number" ? b.viewsSeason : 0;
+      return vb - va;
+    });
+    return arr;
+  }
+
+  function renderMostViewedGrid() {
+    var slot = $('[data-slot="most-viewed"]');
+    if (!slot) return;
+    slot.innerHTML = "";
+    var list = computeMostViewedThisSeason();
+    for (var i = 0; i < list.length; i++) {
+      slot.appendChild(createAnimeCard(list[i]));
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Comments
+  // ------------------------------------------------------------
+
+  function renderEpisodeComments() {
+    var slot = $('[data-slot="episode-comments"]');
+    if (!slot) return;
+    slot.innerHTML = "";
+    for (var i = 0; i < episodeComments.length; i++) {
+      var c = episodeComments[i];
+      var anime = animeById[c.animeId];
+
+      var card = document.createElement("article");
+      card.className = "comment-card";
+
+      var badgeType = anime ? anime.type : "";
+      var badgeQuality = anime ? anime.quality : "";
+
+      var html = "";
+      html += '<div class="comment-pill-row">';
+      html += buildBadgeHtml(badgeType, "badge-type");
+      html += buildBadgeHtml(badgeQuality, "badge-quality");
+      html += "</div>";
+
+      html += '<h3 class="comment-title">';
+      html += anime ? anime.title : "Anime";
+      html += ' <span class="comment-episode">Episode ' + c.episode + "</span>";
+      html += "</h3>";
+
+      html += '<p class="comment-text">' + (c.text || "") + "</p>";
+      html += '<p class="comment-meta">';
+      html += '<span class="comment-user">' + c.user + "</span>";
+      html += " \u2022 ";
+      html += '<span class="comment-time">' + c.timeAgo + "</span>";
+      html += "</p>";
+
+      card.innerHTML = html;
+      slot.appendChild(card);
+    }
+  }
+
+  function renderAnimeComments() {
+    var slot = $('[data-slot="anime-comments"]');
+    if (!slot) return;
+    slot.innerHTML = "";
+    for (var i = 0; i < animeComments.length; i++) {
+      var c = animeComments[i];
+      var anime = animeById[c.animeId];
+
+      var card = document.createElement("article");
+      card.className = "comment-card";
+
+      var badgeType = anime ? anime.type : "";
+      var badgeQuality = anime ? anime.quality : "";
+
+      var html = "";
+      html += '<div class="comment-pill-row">';
+      html += buildBadgeHtml(badgeType, "badge-type");
+      html += buildBadgeHtml(badgeQuality, "badge-quality");
+      if (typeof c.score === "number") {
+        html += buildBadgeHtml(c.score.toFixed(2), "badge-score");
+      }
+      html += "</div>";
+
+      html += '<h3 class="comment-title">';
+      html += anime ? anime.title : "Anime";
+      html += "</h3>";
+
+      html += '<p class="comment-text">' + (c.text || "") + "</p>";
+      html += '<p class="comment-meta">';
+      html += '<span class="comment-user">' + c.user + "</span>";
+      html += " \u2022 ";
+      html += '<span class="comment-time">' + c.timeAgo + "</span>";
+      html += "</p>";
+
+      card.innerHTML = html;
+      slot.appendChild(card);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Search + filters + genres
+  // ------------------------------------------------------------
+
+  var searchApi = null;
+
+  function initSearch() {
+    var input = $('[data-role="search-input"]');
+    var section = $('[data-role="search-section"]');
+    var heading = $('[data-role="search-heading"]');
+    var results = $('[data-role="search-results"]');
+    var empty = $('[data-role="search-empty"]');
+    var clearBtn = $('[data-role="clear-search"]');
+
+    if (!input || !section || !heading || !results || !empty || !clearBtn) {
+      return;
+    }
+
+    function showSection() {
+      section.classList.remove("is-hidden");
+    }
+
+    function hideSection() {
+      section.classList.add("is-hidden");
+      results.innerHTML = "";
+      empty.classList.add("is-hidden");
+    }
+
+    function renderList(list, headingText) {
+      heading.textContent = headingText;
+      results.innerHTML = "";
+      if (!list.length) {
+        empty.classList.remove("is-hidden");
+      } else {
+        empty.classList.add("is-hidden");
+        for (var i = 0; i < list.length; i++) {
+          results.appendChild(createAnimeCard(list[i]));
+        }
+      }
+      showSection();
+      try {
+        var top = section.getBoundingClientRect().top + window.scrollY - 80;
+        window.scrollTo({ top: top, behavior: "smooth" });
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    function searchText(query) {
+      var q = (query || "").toLowerCase().trim();
+      if (!q) {
+        hideSection();
+        return;
+      }
+      var matches = [];
+      for (var i = 0; i < animeList.length; i++) {
+        var a = animeList[i];
+        var combined = (a.title + " " + (a.altTitle || "")).toLowerCase();
+        if (combined.indexOf(q) !== -1) {
+          matches.push(a);
+        }
+      }
+      renderList(matches, 'Hasil untuk "' + query + '"');
+    }
+
+    function showSectionFilter(key, label) {
+      var list;
+      if (key === "season") {
+        list = computeMostViewedThisSeason();
+      } else {
+        list = [];
+        for (var i = 0; i < animeList.length; i++) {
+          if (animeList[i].section === key) {
+            list.push(animeList[i]);
+          }
+        }
+      }
+      renderList(list, label);
+    }
+
+    function showGenreFilter(genre, label) {
+      var g = (genre || "").toLowerCase();
+      var matches = [];
+      for (var i = 0; i < animeList.length; i++) {
+        var a = animeList[i];
+        var gs = a.genres || [];
+        for (var j = 0; j < gs.length; j++) {
+          if (gs[j].toLowerCase() === g) {
+            matches.push(a);
+            break;
+          }
+        }
+      }
+      renderList(matches, label || "Genre: " + genre);
+    }
+
+    input.addEventListener("input", function (e) {
+      searchText(e.target.value || "");
+    });
+
+    clearBtn.addEventListener("click", function () {
+      input.value = "";
+      hideSection();
+    });
+
+    searchApi = {
+      searchText: searchText,
+      showSection: showSectionFilter,
+      showGenre: showGenreFilter
+    };
+  }
+
+  function initFilterButtons() {
+    var buttons = document.querySelectorAll("[data-filter]");
+    if (!buttons.length) return;
+
+    function handleClick(e) {
+      e.preventDefault();
+      if (!searchApi) return;
+      var key = this.getAttribute("data-filter");
+      if (!key) return;
+      var label = "Filter";
+      var sectionTitle = this.closest(".section");
+      if (sectionTitle) {
+        var titleEl = sectionTitle.querySelector(".section-title");
+        if (titleEl) label = titleEl.textContent + " - Semua";
+      }
+      if (key === "season") {
+        label = "Dilihat Terbanyak Musim Ini";
+        searchApi.showSection("season", label);
+      } else {
+        searchApi.showSection(key, label);
+      }
+    }
+
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", handleClick);
+    }
+  }
+
+  function initGenreMenu() {
+    var menu = $('[data-role="genre-menu"]');
+    var toggle = $('[data-nav-toggle="genres"]');
+    if (!menu || !toggle) return;
+
+    // collect unique genres
+    var seen = {};
+    var list = [];
+    for (var i = 0; i < animeList.length; i++) {
+      var gs = animeList[i].genres || [];
+      for (var j = 0; j < gs.length; j++) {
+        var g = gs[j];
+        if (!seen[g]) {
+          seen[g] = true;
+          list.push(g);
         }
       }
     }
-    return true;
+    list.sort();
+
+    for (var k = 0; k < list.length; k++) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = list[k];
+      btn.addEventListener("click", (function (genre) {
+        return function () {
+          if (searchApi) {
+            searchApi.showGenre(genre, "Genre: " + genre);
+          }
+          menu.classList.remove("is-open");
+        };
+      })(list[k]));
+      menu.appendChild(btn);
+    }
+
+    toggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      menu.classList.toggle("is-open");
+    });
+
+    document.addEventListener("click", function (e) {
+      if (!menu.contains(e.target) && e.target !== toggle) {
+        menu.classList.remove("is-open");
+      }
+    });
   }
 
-  function canPlaceAgainstRocks(x, z, r) {
-    const ix = rCellIndex(x);
-    const iz = rCellIndex(z);
-    const range = Math.ceil(r / CELL_SIZE_ROCKS) + 1;
-    for (let dx = -range; dx <= range; dx++) {
-      for (let dz = -range; dz <= range; dz++) {
-        const k = rKey(ix + dx, iz + dz);
-        const cell = rockGrid.get(k);
-        if (!cell) continue;
-        for (let i = 0; i < cell.length; i++) {
-          const p = cell[i];
-          const minDist = r + p.r;
-          const dxp = x - p.x;
-          const dzp = z - p.z;
-          if ((dxp * dxp + dzp * dzp) < (minDist * minDist)) return false;
+  // ------------------------------------------------------------
+  // Navigation scroll
+  // ------------------------------------------------------------
+
+  function initNavScroll() {
+    var buttons = document.querySelectorAll("[data-nav-target]");
+    if (!buttons.length) return;
+
+    function scrollToSection(target) {
+      if (target === "home") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      var id;
+      if (target === "ongoing") id = "ongoing-section";
+      else if (target === "finished") id = "finished-section";
+      else if (target === "movie") id = "movie-section";
+      else id = target;
+
+      var el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function handleClick() {
+      var target = this.getAttribute("data-nav-target");
+      if (!target) return;
+      scrollToSection(target);
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.toggle("is-active", buttons[i] === this);
+      }
+    }
+
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", handleClick);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Detail modal + player modal
+  // ------------------------------------------------------------
+
+  var detailModal = $('[data-role="detail-modal"]');
+  var detailTitleEl = $('[data-role="detail-title"]');
+  var detailSubtitleEl = $('[data-role="detail-subtitle"]');
+  var detailTagsEl = $('[data-role="detail-tags"]');
+  var detailDescriptionEl = $('[data-role="detail-description"]');
+  var detailEpisodesEl = $('[data-role="detail-episodes"]');
+  var detailCoverEl = $('[data-role="detail-cover"]');
+
+  var playerModal = $('[data-role="player-modal"]');
+  var playerTitleEl = $('[data-role="player-title"]');
+
+  function openDetailModal(id) {
+    if (!detailModal) return;
+    var anime = animeById[id];
+    if (!anime) return;
+
+    if (detailTitleEl) detailTitleEl.textContent = anime.title;
+    var subParts = [];
+    if (anime.type) subParts.push(anime.type);
+    if (anime.quality) subParts.push(anime.quality);
+    if (anime.seasonLabel) subParts.push(anime.seasonLabel);
+    if (detailSubtitleEl) detailSubtitleEl.textContent = subParts.join(" \u2022 ");
+    if (detailTagsEl) {
+      var tags = [];
+      if (typeof anime.score === "number") tags.push(buildBadgeHtml("Skor " + anime.score.toFixed(2), "badge-score"));
+      var gs = anime.genres || [];
+      for (var i = 0; i < gs.length && i < 5; i++) {
+        tags.push('<span class="chip chip--small">' + gs[i] + "</span>");
+      }
+      detailTagsEl.innerHTML = tags.join("");
+    }
+    if (detailDescriptionEl) {
+      detailDescriptionEl.textContent = anime.description || "Belum ada deskripsi.";
+    }
+
+    if (detailCoverEl) {
+      detailCoverEl.className = "modal-cover";
+      if (anime.colorKey) {
+        detailCoverEl.classList.add("cover-" + anime.colorKey);
+      }
+    }
+
+    if (detailEpisodesEl) {
+      detailEpisodesEl.innerHTML = "";
+      var total = anime.episodesTotal || anime.episodesAired || 1;
+      for (var ep = 1; ep <= total; ep++) {
+        var li = document.createElement("li");
+        li.className = "episode-item";
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "episode-button";
+
+        var isReleased = !anime.episodesAired || ep <= anime.episodesAired;
+        if (!isReleased) {
+          btn.classList.add("episode-button--disabled");
+          btn.disabled = true;
+        } else {
+          (function (a, num) {
+            btn.addEventListener("click", function () {
+              openPlayerModal(a, num);
+            });
+          })(anime, ep);
         }
-      }
-    }
-    return true;
-  }
 
-  function insertRock(x, z, r) {
-    const ix = rCellIndex(x);
-    const iz = rCellIndex(z);
-    const k = rKey(ix, iz);
-    if (!rockGrid.has(k)) rockGrid.set(k, []);
-    rockGrid.get(k).push({ x, z, r });
-    // Track globally for player collision
-    rockFootprints.push({ x, z, r });
-  }
-
-  let placed = 0;
-  let attempts = 0;
-  const MAX_ATTEMPTS = rockCount * 30;
-
-  while (placed < rockCount && attempts < MAX_ATTEMPTS) {
-    attempts++;
-
-    const x = (Math.random() - 0.5) * (GROUND_SIZE - 100);
-    const z = (Math.random() - 0.5) * (GROUND_SIZE - 100);
-    const minRadius = 18;
-    if (Math.hypot(x, z) < minRadius) continue;
-
-    const scaleMul = 10;
-
-    // Choose a rock variant for more visual variety
-    const v = Math.random();
-    let variant = 'A';
-    if (v < 0.25) variant = 'A';
-    else if (v < 0.50) variant = 'B';
-    else if (v < 0.70) variant = 'C';
-    else if (v < 0.90) variant = 'D'; // slab
-    else variant = 'E';               // boulder
-
-    let sx, sy, sz;
-    if (variant === 'A') {
-      sx = rand(0.25, 1.10) * scaleMul;
-      sz = rand(0.25, 1.10) * scaleMul;
-      sy = rand(0.18, 0.70) * scaleMul;
-    } else if (variant === 'B') {
-      sx = rand(0.30, 1.40) * scaleMul;
-      sz = rand(0.30, 1.40) * scaleMul;
-      sy = rand(0.25, 0.90) * scaleMul;
-    } else if (variant === 'C') {
-      sx = rand(0.40, 1.60) * scaleMul;
-      sz = rand(0.40, 1.60) * scaleMul;
-      sy = rand(0.20, 1.20) * scaleMul;
-    } else if (variant === 'D') {
-      // flat slab-like stones
-      sx = rand(0.80, 2.20) * scaleMul;
-      sz = rand(0.80, 2.20) * scaleMul;
-      sy = rand(0.15, 0.35) * scaleMul;
-    } else {
-      // large boulders
-      const bigMul = scaleMul * 2.0;
-      sx = rand(1.00, 1.80) * bigMul;
-      sz = rand(1.00, 1.80) * bigMul;
-      sy = rand(0.90, 2.50) * bigMul;
-    }
-
-    const r = Math.max(sx, sz) * 0.9;
-
-    if (!canPlaceAgainstTrees(x, z, r)) continue;
-    if (!canPlaceAgainstRocks(x, z, r)) continue;
-
-    const ry = rand(0, Math.PI * 2);
-    const y = -rand(0.05, 0.20) * sy; // bury slightly so the flat bottom sits in the dirt
-
-    if (variant === 'A') {
-      push(matsA, x, y, z, sx, sy, sz, ry);
-    } else if (variant === 'B') {
-      push(matsB, x, y, z, sx, sy, sz, ry);
-    } else if (variant === 'C') {
-      push(matsC, x, y, z, sx, sy, sz, ry);
-    } else if (variant === 'D') {
-      push(matsD, x, y, z, sx, sy, sz, ry);
-    } else {
-      push(matsE, x, y, z, sx, sy, sz, ry);
-    }
-
-    insertRock(x, z, r);
-    placed++;
-  }
-
-  function build(geo, mat, matrices) {
-    if (!matrices.length) return null;
-    const mesh = new THREE.InstancedMesh(geo, mat, matrices.length);
-    for (let i = 0; i < matrices.length; i++) {
-      mesh.setMatrixAt(i, matrices[i]);
-    }
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
-    mesh.instanceMatrix.needsUpdate = true;
-    return mesh;
-  }
-
-  const mA = build(rockGeoA, rockMatA, matsA);
-  const mB = build(rockGeoB, rockMatB, matsB);
-  const mC = build(rockGeoC, rockMatC, matsC);
-  const mD = build(rockGeoD, rockMatD, matsD);
-  const mE = build(rockGeoE, rockMatE, matsE);
-  if (mA) group.add(mA);
-  if (mB) group.add(mB);
-  if (mC) group.add(mC);
-  if (mD) group.add(mD);
-  if (mE) group.add(mE);
-
-  scene.add(group);
-}
-
-addForestInstanced(4000);
-addRocksInstanced(1200);
-
-// --- Simple collision system (2D circle colliders on XZ plane) ---
-const PLAYER_RADIUS = 1.6;           // player collision radius (world units)
-const COLLISION_CELL = 16;           // spatial hash cell size
-const COLLISION_NEIGHBOR_RANGE = 3;  // cells to search in each axis from player cell
-
-const collisionGrid = new Map();
-
-function cIndex(v) { return Math.floor(v / COLLISION_CELL); }
-function cKey(ix, iz) { return ix + ',' + iz; }
-
-function buildCollisionGrid() {
-  collisionGrid.clear();
-
-  // Insert trees
-  for (let i = 0; i < treeFootprints.length; i++) {
-    const p = treeFootprints[i];
-    const k = cKey(cIndex(p.x), cIndex(p.z));
-    if (!collisionGrid.has(k)) collisionGrid.set(k, []);
-    collisionGrid.get(k).push(p);
-  }
-
-  // Insert rocks
-  for (let i = 0; i < rockFootprints.length; i++) {
-    const p = rockFootprints[i];
-    const k = cKey(cIndex(p.x), cIndex(p.z));
-    if (!collisionGrid.has(k)) collisionGrid.set(k, []);
-    collisionGrid.get(k).push(p);
-  }
-}
-
-function getNearby(x, z) {
-  const ix = cIndex(x);
-  const iz = cIndex(z);
-  const res = [];
-  for (let dx = -COLLISION_NEIGHBOR_RANGE; dx <= COLLISION_NEIGHBOR_RANGE; dx++) {
-    for (let dz = -COLLISION_NEIGHBOR_RANGE; dz <= COLLISION_NEIGHBOR_RANGE; dz++) {
-      const k = cKey(ix + dx, iz + dz);
-      const cell = collisionGrid.get(k);
-      if (cell) res.push(...cell);
-    }
-  }
-  return res;
-}
-
-function collidesAt(x, z, r) {
-  const neighbors = getNearby(x, z);
-  for (let i = 0; i < neighbors.length; i++) {
-    const p = neighbors[i];
-    const minDist = r + p.r;
-    const dx = x - p.x;
-    const dz = z - p.z;
-    if ((dx * dx + dz * dz) < (minDist * minDist)) return true;
-  }
-  return false;
-}
-
-// Move the camera with collision, given local deltas in the camera's right/forward axes
-function attemptMoveLocal(dxLocal, dzLocal) {
-  if (dxLocal === 0 && dzLocal === 0) return;
-
-  // Compute world-space movement vectors
-  const forward = new THREE.Vector3();
-  camera.getWorldDirection(forward);
-  forward.y = 0;
-  if (forward.lengthSq() > 1e-6) forward.normalize(); else forward.set(0, 0, -1);
-
-  const up = new THREE.Vector3(0, 1, 0);
-  const right = new THREE.Vector3().copy(forward).cross(up).normalize();
-
-  const worldDelta = new THREE.Vector3()
-    .addScaledVector(right, dxLocal)
-    .addScaledVector(forward, dzLocal);
-
-  // Break long moves into small steps to reduce tunneling through thin obstacles
-  const maxStep = 2.0;
-  const steps = Math.max(1, Math.ceil(worldDelta.length() / maxStep));
-  const stepDx = dxLocal / steps;
-  const stepDz = dzLocal / steps;
-
-  for (let i = 0; i < steps; i++) {
-    const dR = right.clone().multiplyScalar(stepDx);
-    const dF = forward.clone().multiplyScalar(stepDz);
-
-    // Axis-separated movement for natural sliding
-    if (stepDx !== 0) {
-      const candX = camera.position.x + dR.x;
-      const candZ = camera.position.z + dR.z;
-      if (!collidesAt(candX, candZ, PLAYER_RADIUS)) {
-        camera.position.x = candX;
-        camera.position.z = candZ;
-      } else {
-        // Stop strafing velocity if blocked
-        velocity.x = 0;
+        btn.textContent = "Episode " + ep + (isReleased ? "" : " (Segera)");
+        li.appendChild(btn);
+        detailEpisodesEl.appendChild(li);
       }
     }
 
-    if (stepDz !== 0) {
-      const candX = camera.position.x + dF.x;
-      const candZ = camera.position.z + dF.z;
-      if (!collidesAt(candX, candZ, PLAYER_RADIUS)) {
-        camera.position.x = candX;
-        camera.position.z = candZ;
-      } else {
-        // Stop forward/back velocity if blocked
-        velocity.z = 0;
+    detailModal.classList.remove("is-hidden");
+    detailModal.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDetailModal() {
+    if (!detailModal) return;
+    detailModal.classList.add("is-hidden");
+    detailModal.setAttribute("aria-hidden", "true");
+  }
+
+  function openPlayerModal(anime, episodeNumber) {
+    if (!playerModal || !playerTitleEl) return;
+    playerTitleEl.textContent = anime.title + " — Episode " + episodeNumber;
+    playerModal.classList.remove("is-hidden");
+    playerModal.setAttribute("aria-hidden", "false");
+  }
+
+  function closePlayerModal() {
+    if (!playerModal) return;
+    playerModal.classList.add("is-hidden");
+    playerModal.setAttribute("aria-hidden", "true");
+  }
+
+  function initModals() {
+    if (detailModal) {
+      var detailCloseEls = detailModal.querySelectorAll("[data-action='close-detail']");
+      for (var i = 0; i < detailCloseEls.length; i++) {
+        detailCloseEls[i].addEventListener("click", function () {
+          closeDetailModal();
+        });
       }
     }
-  }
-}
-
-// Build the collision grid now that trees and rocks are placed
-buildCollisionGrid();
-
-// Controls (mouse look + keyboard move)
-const controls = new PointerLockControls(camera, document.body);
-// PointerLockControls r180 controls the camera directly; no need to add an object to the scene.
-
-const overlay = document.getElementById('overlay');
-const startBtn = document.getElementById('start');
-
-controls.addEventListener('lock', () => {
-  overlay.style.display = 'none';
-});
-
-controls.addEventListener('unlock', () => {
-  overlay.style.display = 'flex';
-});
-
-startBtn.addEventListener('click', () => {
-  controls.lock();
-});
-
-// Movement state
-let moveForward = false;
-let moveBackward = false;
-let moveLeft = false;
-let moveRight = false;
-let isSprinting = false;
-
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
-const SPEED = 80; // world units per second (doubled)
-const DAMPING = 8.0;
-const SPRINT_MULTIPLIER = 2.0;
-
-// Stamina
-const MAX_STAMINA = 100;
-let stamina = MAX_STAMINA;
-const STAMINA_DRAIN_PER_SEC = 30; // while sprinting
-const STAMINA_REGEN_PER_SEC = 20; // while not sprinting
-const staminaFill = document.getElementById('stamina-fill');
-
-function onKeyDown(event) {
-  switch (event.code) {
-    case 'ArrowUp':
-    case 'KeyW':
-      moveForward = true; event.preventDefault(); break;
-    case 'ArrowLeft':
-    case 'KeyA':
-      moveLeft = true; event.preventDefault(); break;
-    case 'ArrowDown':
-    case 'KeyS':
-      moveBackward = true; event.preventDefault(); break;
-    case 'ArrowRight':
-    case 'KeyD':
-      moveRight = true; event.preventDefault(); break;
-    case 'ShiftLeft':
-    case 'ShiftRight':
-      isSprinting = true; event.preventDefault(); break;
-    default:
-      break;
-  }
-}
-
-function onKeyUp(event) {
-  switch (event.code) {
-    case 'ArrowUp':
-    case 'KeyW':
-      moveForward = false; event.preventDefault(); break;
-    case 'ArrowLeft':
-    case 'KeyA':
-      moveLeft = false; event.preventDefault(); break;
-    case 'ArrowDown':
-    case 'KeyS':
-      moveBackward = false; event.preventDefault(); break;
-    case 'ArrowRight':
-    case 'KeyD':
-      moveRight = false; event.preventDefault(); break;
-    case 'ShiftLeft':
-    case 'ShiftRight':
-      isSprinting = false; event.preventDefault(); break;
-    default:
-      break;
-  }
-}
-
-document.addEventListener('keydown', onKeyDown);
-document.addEventListener('keyup', onKeyUp);
-
-// Keep the camera above ground and within bounds
-function clampPlayer() {
-  const obj = camera; // controls operate directly on the camera in r180
-  obj.position.y = EYE_HEIGHT;
-  const half = GROUND_SIZE * 0.5 - 5;
-  obj.position.x = Math.max(-half, Math.min(half, obj.position.x));
-  obj.position.z = Math.max(-half, Math.min(half, obj.position.z));
-}
-
-// Animation loop
-const clock = new THREE.Clock();
-
-function animate() {
-  requestAnimationFrame(animate);
-
-  const delta = Math.min(clock.getDelta(), 0.05); // clamp big frame jumps
-
-  // Apply damping
-  velocity.x -= velocity.x * DAMPING * delta;
-  velocity.z -= velocity.z * DAMPING * delta;
-
-  // Input direction
-  direction.z = Number(moveForward) - Number(moveBackward);
-  direction.x = Number(moveRight) - Number(moveLeft);
-  direction.normalize();
-
-  if (controls.isLocked) {
-    const moving = moveForward || moveBackward || moveLeft || moveRight;
-    const sprinting = isSprinting && moving && stamina > 0;
-
-    const curSpeed = SPEED * (sprinting ? SPRINT_MULTIPLIER : 1);
-    if (moveForward || moveBackward) velocity.z -= direction.z * curSpeed * delta;
-    if (moveLeft || moveRight) velocity.x -= direction.x * curSpeed * delta;
-
-    // Apply movement with collision
-    attemptMoveLocal(-velocity.x * delta, -velocity.z * delta);
-    clampPlayer();
-
-    // Stamina drain/regen
-    if (sprinting) {
-      stamina -= STAMINA_DRAIN_PER_SEC * delta;
-    } else {
-      stamina += STAMINA_REGEN_PER_SEC * delta;
+    if (playerModal) {
+      var playerCloseEls = playerModal.querySelectorAll("[data-action='close-player']");
+      for (var j = 0; j < playerCloseEls.length; j++) {
+        playerCloseEls[j].addEventListener("click", function () {
+          closePlayerModal();
+        });
+      }
     }
-    stamina = Math.max(0, Math.min(MAX_STAMINA, stamina));
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        closeDetailModal();
+        closePlayerModal();
+      }
+    });
   }
 
-  // Update stamina UI
-  const ratio = stamina / MAX_STAMINA;
-  if (staminaFill) {
-    staminaFill.style.width = `${(ratio * 100).toFixed(1)}%`;
-    staminaFill.style.backgroundColor = ratio > 0.6 ? '#22c55e' : (ratio > 0.3 ? '#f59e0b' : '#ef4444');
+  // ------------------------------------------------------------
+  // Chat
+  // ------------------------------------------------------------
+
+  var chatMessagesEl = $('[data-role="chat-messages"]');
+  var chatFormEl = $('[data-role="chat-form"]');
+  var chatInputEl = $('[data-role="chat-input"]');
+
+  function appendChatMessage(msg) {
+    if (!chatMessagesEl) return;
+    var wrapper = document.createElement("div");
+    var roleClass = msg.role || "user";
+    wrapper.className = "chat-message chat-message--" + roleClass;
+
+    var bubble = document.createElement("div");
+    bubble.className = "chat-bubble";
+    bubble.textContent = msg.text || "";
+
+    var meta = document.createElement("div");
+    meta.className = "chat-meta";
+
+    if (roleClass === "system") {
+      bubble.classList.add("chat-bubble--system");
+      meta.innerHTML = "";
+      wrapper.appendChild(bubble);
+    } else {
+      var authorSpan = document.createElement("span");
+      authorSpan.className = "chat-author";
+      authorSpan.textContent = msg.author || "User";
+
+      var timeSpan = document.createElement("span");
+      timeSpan.className = "chat-time";
+      timeSpan.textContent = msg.timeAgo || "Baru saja";
+
+      meta.appendChild(authorSpan);
+      meta.appendChild(document.createTextNode(" • "));
+      meta.appendChild(timeSpan);
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(meta);
+    }
+
+    chatMessagesEl.appendChild(wrapper);
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
-  renderer.render(scene, camera);
-}
+  function initChat() {
+    if (!chatMessagesEl || !chatFormEl || !chatInputEl) return;
 
-animate();
+    for (var i = 0; i < chatSeed.length; i++) {
+      appendChatMessage(chatSeed[i]);
+    }
 
-// Resize handling
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+    chatFormEl.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var value = (chatInputEl.value || "").trim();
+      if (!value) return;
+      appendChatMessage({
+        id: "self-" + Date.now(),
+        author: "Kamu",
+        role: "self",
+        timeAgo: "Baru saja",
+        text: value
+      });
+      chatInputEl.value = "";
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Init
+  // ------------------------------------------------------------
+
+  function init() {
+    fetchAnimeFromApi()
+      .catch(function () {
+        // Jika API gagal, gunakan data bawaan di script.
+      })
+      .finally(function () {
+        rebuildAnimeIndex();
+
+        initHero();
+
+        renderSection("ongoing", "ongoing");
+        renderSection("finished", "finished");
+        renderSection("movie", "movie");
+        renderMostViewedGrid();
+
+        renderEpisodeComments();
+        renderAnimeComments();
+
+        initSearch();
+        initFilterButtons();
+        initGenreMenu();
+        initNavScroll();
+        initModals();
+        initChat();
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
