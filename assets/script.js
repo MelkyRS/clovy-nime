@@ -98,6 +98,28 @@
       rewardItem: 'Kristal Pemecah Batu',
       points: 150
     },
+    rock_math2: {
+      id: 'rock_math2',
+      title: 'Batu Energi Kedua',
+      intro: 'Batu berikutnya butuh energi tambahan. Hitung hasil operasi berikut.',
+      question: '18 ÷ 3 + 4 = ?',
+      options: ['8', '9', '10', '14'],
+      correctIndex: 2,
+      explanation: '18 ÷ 3 = 6, lalu 6 + 4 = 10.',
+      rewardItem: 'Kristal Energi Tambahan',
+      points: 150
+    },
+    rock_math3: {
+      id: 'rock_math3',
+      title: 'Batu Penjaga Gerbang',
+      intro: 'Gerbang batu akan terbuka jika kamu menjawab soal ini dengan benar.',
+      question: '7 × 4 − 5 = ?',
+      options: ['23', '24', '28', '21'],
+      correctIndex: 0,
+      explanation: '7 × 4 = 28, lalu 28 − 5 = 23.',
+      rewardItem: 'Kunci Gerbang Batu',
+      points: 180
+    },
     thieves_fraction: {
       id: 'thieves_fraction',
       title: 'Perundingan dengan Kelompok Pencuri',
@@ -109,16 +131,49 @@
       rewardItem: 'Perjanjian Damai',
       points: 150
     },
+    thieves_fraction2: {
+      id: 'thieves_fraction2',
+      title: 'Membagi Harta Rampasan',
+      intro: 'Pencuri ingin membagi 2 kantong koin sama rata untuk 5 orang.',
+      question: 'Berapa bagian kantong koin yang diterima setiap orang?',
+      options: ['1/5', '2/5', '2/10', '4/5'],
+      correctIndex: 1,
+      explanation: '2 kantong dibagi 5 orang berarti setiap orang mendapat 2/5 kantong.',
+      rewardItem: 'Persetujuan Pembagian Adil',
+      points: 170
+    },
+    logic_path: {
+      id: 'logic_path',
+      title: 'Memilih Jalur yang Aman',
+      intro: 'Ada tiga jalur di depan: satu penuh jebakan, satu buntu, satu aman.',
+      question: 'Jika jalur merah selalu berbahaya dan jalur biru selalu buntu, jalur mana yang paling aman?',
+      options: ['Merah', 'Biru', 'Hijau', 'Semua sama saja'],
+      correctIndex: 2,
+      explanation: 'Jika merah berbahaya dan biru buntu, berarti hijau adalah jalur aman.',
+      rewardItem: 'Peta Jalur Aman',
+      points: 160
+    },
     bridge_science: {
       id: 'bridge_science',
       title: 'Membangun Jembatan Darurat',
-      intro: 'Di depanmu ada sungai deras. Kamu harus memilih bahan terbaik untuk jembatan sementara.',
+      intro: 'Di depanku ada sungai deras. Aku harus memilih bahan terbaik untuk jembatan sementara.',
       question: 'Bahan manakah yang paling cocok untuk membuat jembatan sederhana yang kuat dan cukup ringan?',
       options: ['Kertas', 'Kayu', 'Kaca', 'Tanah liat'],
       correctIndex: 1,
       explanation: 'Kayu cukup kuat dan lebih ringan dibanding banyak bahan lain sehingga cocok untuk jembatan sederhana.',
       rewardItem: 'Kit Jembatan',
       points: 200
+    },
+    bridge_science2: {
+      id: 'bridge_science2',
+      title: 'Struktur Jembatan',
+      intro: 'Kamu ingin membuat jembatan yang tidak mudah roboh.',
+      question: 'Bentuk struktur manakah yang paling kuat untuk menahan beban?',
+      options: ['Lingkaran', 'Segitiga', 'Persegi panjang', 'Garis lurus'],
+      correctIndex: 1,
+      explanation: 'Segitiga adalah bentuk dasar struktur yang kuat dan stabil, banyak dipakai pada jembatan.',
+      rewardItem: 'Rangka Segitiga',
+      points: 190
     }
   };
 
@@ -136,7 +191,7 @@
     {
       id: 'thieves1',
       type: 'thieves',
-      x: 720,
+      x: 520,
       y: GROUND_Y - 26,
       w: 40,
       h: 26,
@@ -144,14 +199,54 @@
       quizId: 'thieves_fraction'
     },
     {
+      id: 'rock2',
+      type: 'rock',
+      x: 780,
+      y: GROUND_Y - 22,
+      w: 42,
+      h: 22,
+      solved: false,
+      quizId: 'rock_math2'
+    },
+    {
+      id: 'thieves2',
+      type: 'thieves',
+      x: 1040,
+      y: GROUND_Y - 26,
+      w: 40,
+      h: 26,
+      solved: false,
+      quizId: 'thieves_fraction2'
+    },
+    {
       id: 'gap_river',
       type: 'gap',
-      x: 1120,
+      x: 1280,
       y: GROUND_Y - 3,
-      w: 80,
+      w: 90,
       h: 6,
       solved: false,
       quizId: 'bridge_science'
+    },
+    {
+      id: 'rock3',
+      type: 'rock',
+      x: 1580,
+      y: GROUND_Y - 22,
+      w: 42,
+      h: 22,
+      solved: false,
+      quizId: 'rock_math3'
+    },
+    {
+      id: 'logic_gate',
+      type: 'thieves',
+      x: 1800,
+      y: GROUND_Y - 26,
+      w: 40,
+      h: 26,
+      solved: false,
+      quizId: 'logic_path'
     }
   ];
 
@@ -461,14 +556,33 @@
 
   function getSolids() {
     const result = [];
-    for (let i = 0; i < groundSegments.length; i++) {
+    for (let i = 0; i &lt; groundSegments.length; i++) {
       result.push(groundSegments[i]);
     }
-    for (let i = 0; i < obstacles.length; i++) {
+    for (let i = 0; i &lt; obstacles.length; i++) {
       const ob = obstacles[i];
+      if (ob.type === 'gap') {
+        if (ob.solved) {
+          result.push({
+            x: ob.x,
+            y: ob.y - 4,
+            w: ob.w,
+            h: 10
+          });
+        }
+        continue;
+      }
       if (ob.solved) continue;
-      if (ob.type === 'gap') continue;
-      result.push(ob);
+      if (ob.type === 'rock' || ob.type === 'thieves') {
+        result.push({
+          x: ob.x,
+          y: ob.y - 64,
+          w: ob.w,
+          h: ob.h + 64
+        });
+      } else {
+        result.push(ob);
+      }
     }
     return result;
   }
