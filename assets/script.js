@@ -264,7 +264,7 @@
     if (!("fetch" in window)) {
       return Promise.resolve();
     }
-    return fetch(API_BASE + "/anime")
+    return fetch(API_BASE + "/anime.php")
       .then(function (res) {
         if (!res.ok) {
           throw new Error("Gagal memuat data anime dari API");

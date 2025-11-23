@@ -2,8 +2,6 @@
   "use strict";
 
   var API_BASE = "/api";
-  var TOKEN_KEY = "anime-admin-token";
-  var token = null;
   var currentEditingId = null;
   var currentList = [];
 
@@ -21,32 +19,6 @@
 
   function getLoginField(name) {
     return document.querySelector('[data-admin-login="' + name + '"]');
-  }
-
-  function setAuthToken(newToken) {
-    token = newToken || null;
-    try {
-      if (!("sessionStorage" in window)) return;
-      if (token) {
-        window.sessionStorage.setItem(TOKEN_KEY, token);
-      } else {
-        window.sessionStorage.removeItem(TOKEN_KEY);
-      }
-    } catch (e) {
-      // ignore storage errors
-    }
-  }
-
-  function restoreToken() {
-    try {
-      if (!("sessionStorage" in window)) return;
-      var stored = window.sessionStorage.getItem(TOKEN_KEY);
-      if (stored) {
-        token = stored;
-      }
-    } catch (e) {
-      // ignore
-    }
   }
 
   function readForm() {
@@ -182,14 +154,14 @@
     return null;
   }
 
-  function renderListFromState() {
+  function renderListFromState(loggedIn) {
     var container = getListContainer();
     if (!container) return;
     container.innerHTML = "";
 
     var countLabel = $("#admin-count");
 
-    if (!token) {
+    if (!loggedIn) {
       if (countLabel) countLabel.textContent = "Harus login";
       var info = document.createElement("p");
       info.className = "admin-small";
@@ -272,28 +244,27 @@
           if (!window.confirm('Yakin ingin menghapus "' + (anime.title || anime.id) + '" dari database?')) {
             return;
           }
-          if (!token) {
-            window.alert("Harus login dulu.");
-            return;
-          }
-          fetch(API_BASE + "/admin/anime/" + encodeURIComponent(anime.id), {
-            method: "DELETE",
-            headers: {
-              Authorization: "Bearer " + token
-            }
+          fetch(API_BASE + "/anime.php?id=" + encodeURIComponent(anime.id), {
+            method: "DELETE"
           })
             .then(function (res) {
               if (res.status === 401) {
-                setAuthToken(null);
                 throw new Error("Sesi login berakhir. Silakan login lagi.");
               }
-              if (!res.ok && res.status !== 204) {
-                throw new Error("Gagal menghapus (status " + res.status + ")");
+              if (!res.ok) {
+                return res
+                  .json()
+                  .catch(function () {
+                    return { error: "Gagal menghapus data." };
+                  })
+                  .then(function (body) {
+                    throw new Error(body.error || "Gagal menghapus data.");
+                  });
               }
               currentList = currentList.filter(function (item) {
                 return item.id !== anime.id;
               });
-              renderListFromState();
+              renderListFromState(true);
             })
             .catch(function (err) {
               window.alert(err.message || "Gagal menghapus data.");
@@ -322,22 +293,12 @@
     var countLabel = $("#admin-count");
     if (!container) return Promise.resolve();
 
-    if (!token) {
-      renderListFromState();
-      return Promise.resolve();
-    }
-
     if (countLabel) countLabel.textContent = "Memuat...";
     container.innerHTML = "";
 
-    return fetch(API_BASE + "/admin/anime", {
-      headers: {
-        Authorization: "Bearer " + token
-      }
-    })
+    return fetch(API_BASE + "/anime.php")
       .then(function (res) {
         if (res.status === 401) {
-          setAuthToken(null);
           throw new Error("Sesi login berakhir. Silakan login lagi.");
         }
         if (!res.ok) {
@@ -348,10 +309,35 @@
       .then(function (data) {
         if (!Array.isArray(data)) data = [];
         currentList = data;
-        renderListFromState();
+        renderListFromState(true);
       })
       .catch(function (err) {
         if (countLabel) countLabel.textContent = "Gagal memuat data: " + err.message;
+      });
+  }
+
+  function checkLoginAndInitList() {
+    return fetch(API_BASE + "/auth.php")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("Gagal mengecek sesi login.");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        var loggedIn = !!data.logged_in;
+        if (loggedIn) {
+          var loginCard = document.getElementById("admin-login-card");
+          if (loginCard) {
+            loginCard.style.display = "none";
+          }
+          return loadAnimeList();
+        } else {
+          renderListFromState(false);
+        }
+      })
+      .catch(function () {
+        renderListFromState(false);
       });
   }
 
@@ -370,7 +356,7 @@
 
     if (statusEl) statusEl.textContent = "Mengirim...";
 
-    fetch(API_BASE + "/auth/login", {
+    fetch(API_BASE + "/auth.php", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -390,11 +376,7 @@
         }
         return res.json();
       })
-      .then(function (data) {
-        if (!data || !data.token) {
-          throw new Error("Token tidak diterima dari server.");
-        }
-        setAuthToken(data.token);
+      .then(function () {
         if (statusEl) statusEl.textContent = "Login berhasil";
         var loginCard = document.getElementById("admin-login-card");
         if (loginCard) {
@@ -403,7 +385,6 @@
         return loadAnimeList();
       })
       .catch(function (err) {
-        setAuthToken(null);
         if (statusEl) statusEl.textContent = err.message || "Login gagal";
       });
   }
@@ -416,10 +397,6 @@
 
     if (saveBtn) {
       saveBtn.addEventListener("click", function () {
-        if (!token) {
-          window.alert("Harus login dulu.");
-          return;
-        }
         var anime = readForm();
         var error = validateAnime(anime);
         if (error) {
@@ -429,19 +406,17 @@
 
         var isEditing = !!currentEditingId;
         var method = isEditing ? "PUT" : "POST";
-        var url = API_BASE + "/admin/anime" + (isEditing ? "/" + encodeURIComponent(currentEditingId) : "");
+        var url = API_BASE + "/anime.php" + (isEditing ? "?id=" + encodeURIComponent(currentEditingId) : "");
 
         fetch(url, {
           method: method,
           headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + token
+            "Content-Type": "application/json"
           },
           body: JSON.stringify(anime)
         })
           .then(function (res) {
             if (res.status === 401) {
-              setAuthToken(null);
               throw new Error("Sesi login berakhir. Silakan login lagi.");
             }
             if (!res.ok) {
@@ -462,7 +437,7 @@
             currentEditingId = anime.id;
             var status = $("#admin-status");
             if (status) status.textContent = "Mode: edit — " + (anime.title || anime.id);
-            window.alert("Data anime tersimpan di database backend.");
+            window.alert("Data anime tersimpan di database.");
             return loadAnimeList();
           })
           .catch(function (err) {
@@ -493,16 +468,7 @@
   function init() {
     clearForm();
     initEvents();
-    restoreToken();
-    if (token) {
-      var loginCard = document.getElementById("admin-login-card");
-      if (loginCard) {
-        loginCard.style.display = "none";
-      }
-      loadAnimeList();
-    } else {
-      renderListFromState();
-    }
+    checkLoginAndInitList();
   }
 
   if (document.readyState === "loading") {
