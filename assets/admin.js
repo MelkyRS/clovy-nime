@@ -87,7 +87,10 @@
     if (data.seasonKey) data.seasonKey = String(data.seasonKey).trim();
     if (data.description) data.description = String(data.description).trim();
     if (data.colorKey) data.colorKey = String(data.colorKey).trim() || "orange";
-    if (data.downloadUrl) data.downloadUrl = String(data.downloadUrl).trim();
+    if (data.download240) data.download240 = String(data.download240).trim();
+    if (data.download360) data.download360 = String(data.download360).trim();
+    if (data.download480) data.download480 = String(data.download480).trim();
+    if (data.download720) data.download720 = String(data.download720).trim();
 
     return data;
   }
@@ -136,7 +139,10 @@
       description: "",
       featured: false,
       colorKey: "",
-      downloadUrl: ""
+      download240: "",
+      download360: "",
+      download480: "",
+      download720: ""
     });
     currentEditingId = null;
     var status = $("#admin-status");

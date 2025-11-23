@@ -861,14 +861,28 @@
 
     if (detailDownloadEl) {
       detailDownloadEl.innerHTML = "";
-      if (anime.downloadUrl) {
-        var link = document.createElement("a");
-        link.href = anime.downloadUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.className = "button button--primary";
-        link.textContent = "Download";
-        detailDownloadEl.appendChild(link);
+      var links = [
+        { key: "download240", label: "240p" },
+        { key: "download360", label: "360p" },
+        { key: "download480", label: "480p" },
+        { key: "download720", label: "720p" }
+      ];
+      var hasAny = false;
+      for (var i = 0; i &lt; links.length; i++) {
+        var info = links[i];
+        var url = anime[info.key];
+        if (!url) continue;
+        hasAny = true;
+        var a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "button button--primary";
+        a.textContent = "Download " + info.label;
+        detailDownloadEl.appendChild(a);
+      }
+      if (!hasAny) {
+        detailDownloadEl.textContent = "";
       }
     }
 

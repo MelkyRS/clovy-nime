@@ -33,7 +33,10 @@ function map_anime_row($row)
         'description' => $row['description'] ?? '',
         'colorKey' => $row['color_key'] ?? 'orange',
         'featured' => !empty($row['featured']),
-        'downloadUrl' => $row['download_url'] ?? null,
+        'download240' => $row['download_240'] ?? null,
+        'download360' => $row['download_360'] ?? null,
+        'download480' => $row['download_480'] ?? null,
+        'download720' => $row['download_720'] ?? null,
     ];
 }
 
@@ -72,7 +75,10 @@ function normalize_anime($a)
         'description' => isset($a['description']) ? trim($a['description']) : '',
         'colorKey' => isset($a['colorKey']) ? trim($a['colorKey']) : 'orange',
         'featured' => !empty($a['featured']),
-        'downloadUrl' => isset($a['downloadUrl']) ? trim($a['downloadUrl']) : null,
+        'download240' => isset($a['download240']) ? trim($a['download240']) : null,
+        'download360' => isset($a['download360']) ? trim($a['download360']) : null,
+        'download480' => isset($a['download480']) ? trim($a['download480']) : null,
+        'download720' => isset($a['download720']) ? trim($a['download720']) : null,
     ];
 }
 
@@ -137,8 +143,10 @@ if ($method === 'POST') {
         INSERT INTO anime (
             id, title, alt_title, type, quality, section, status, score,
             episodes_aired, episodes_total, season_label, season_key,
-            views_season, genres, description, color_key, featured, download_url, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            views_season, genres, description, color_key, featured,
+            download_240, download_360, download_480, download_720,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ');
 
     try {
@@ -160,7 +168,10 @@ if ($method === 'POST') {
             $anime['description'],
             $anime['colorKey'],
             $featured,
-            $anime['downloadUrl'],
+            $anime['download240'],
+            $anime['download360'],
+            $anime['download480'],
+            $anime['download720'],
             $now,
             $now
         ]);
@@ -185,7 +196,9 @@ if ($method === 'PUT') {
         UPDATE anime SET
           id = ?, title = ?, alt_title = ?, type = ?, quality = ?, section = ?, status = ?,
           score = ?, episodes_aired = ?, episodes_total = ?, season_label = ?, season_key = ?,
-          views_season = ?, genres = ?, description = ?, color_key = ?, featured = ?, download_url = ?, updated_at = ?
+          views_season = ?, genres = ?, description = ?, color_key = ?, featured = ?,
+          download_240 = ?, download_360 = ?, download_480 = ?, download_720 = ?,
+          updated_at = ?
         WHERE id = ?
     ');
     $stmt->execute([
@@ -206,7 +219,10 @@ if ($method === 'PUT') {
         $anime['description'],
         $anime['colorKey'],
         $featured,
-        $anime['downloadUrl'],
+        $anime['download240'],
+        $anime['download360'],
+        $anime['download480'],
+        $anime['download720'],
         $now,
         $idParam
     ]);
