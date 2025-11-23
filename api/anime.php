@@ -33,6 +33,7 @@ function map_anime_row($row)
         'description' => $row['description'] ?? '',
         'colorKey' => $row['color_key'] ?? 'orange',
         'featured' => !empty($row['featured']),
+        'downloadUrl' => $row['download_url'] ?? null,
     ];
 }
 
@@ -71,6 +72,7 @@ function normalize_anime($a)
         'description' => isset($a['description']) ? trim($a['description']) : '',
         'colorKey' => isset($a['colorKey']) ? trim($a['colorKey']) : 'orange',
         'featured' => !empty($a['featured']),
+        'downloadUrl' => isset($a['downloadUrl']) ? trim($a['downloadUrl']) : null,
     ];
 }
 
@@ -135,8 +137,8 @@ if ($method === 'POST') {
         INSERT INTO anime (
             id, title, alt_title, type, quality, section, status, score,
             episodes_aired, episodes_total, season_label, season_key,
-            views_season, genres, description, color_key, featured, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            views_season, genres, description, color_key, featured, download_url, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ');
 
     try {
@@ -158,6 +160,7 @@ if ($method === 'POST') {
             $anime['description'],
             $anime['colorKey'],
             $featured,
+            $anime['downloadUrl'],
             $now,
             $now
         ]);
@@ -182,7 +185,7 @@ if ($method === 'PUT') {
         UPDATE anime SET
           id = ?, title = ?, alt_title = ?, type = ?, quality = ?, section = ?, status = ?,
           score = ?, episodes_aired = ?, episodes_total = ?, season_label = ?, season_key = ?,
-          views_season = ?, genres = ?, description = ?, color_key = ?, featured = ?, updated_at = ?
+          views_season = ?, genres = ?, description = ?, color_key = ?, featured = ?, download_url = ?, updated_at = ?
         WHERE id = ?
     ');
     $stmt->execute([
@@ -203,6 +206,7 @@ if ($method === 'PUT') {
         $anime['description'],
         $anime['colorKey'],
         $featured,
+        $anime['downloadUrl'],
         $now,
         $idParam
     ]);

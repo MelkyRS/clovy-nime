@@ -87,13 +87,14 @@
     if (data.seasonKey) data.seasonKey = String(data.seasonKey).trim();
     if (data.description) data.description = String(data.description).trim();
     if (data.colorKey) data.colorKey = String(data.colorKey).trim() || "orange";
+    if (data.downloadUrl) data.downloadUrl = String(data.downloadUrl).trim();
 
     return data;
   }
 
   function writeForm(anime) {
     var fields = getFields();
-    for (var i = 0; i < fields.length; i++) {
+    for (var i = 0; i &lt; fields.length; i++) {
       var el = fields[i];
       var key = el.getAttribute("data-admin-field");
       if (!key) continue;
@@ -134,7 +135,8 @@
       genres: [],
       description: "",
       featured: false,
-      colorKey: ""
+      colorKey: "",
+      downloadUrl: ""
     });
     currentEditingId = null;
     var status = $("#admin-status");

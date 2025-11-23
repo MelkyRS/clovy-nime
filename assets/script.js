@@ -795,6 +795,7 @@
   var detailDescriptionEl = $('[data-role="detail-description"]');
   var detailEpisodesEl = $('[data-role="detail-episodes"]');
   var detailCoverEl = $('[data-role="detail-cover"]');
+  var detailDownloadEl = $('[data-role="detail-download"]');
 
   var playerModal = $('[data-role="player-modal"]');
   var playerTitleEl = $('[data-role="player-title"]');
@@ -833,14 +834,14 @@
     if (detailEpisodesEl) {
       detailEpisodesEl.innerHTML = "";
       var total = anime.episodesTotal || anime.episodesAired || 1;
-      for (var ep = 1; ep <= total; ep++) {
+      for (var ep = 1; ep &lt;= total; ep++) {
         var li = document.createElement("li");
         li.className = "episode-item";
         var btn = document.createElement("button");
         btn.type = "button";
         btn.className = "episode-button";
 
-        var isReleased = !anime.episodesAired || ep <= anime.episodesAired;
+        var isReleased = !anime.episodesAired || ep &lt;= anime.episodesAired;
         if (!isReleased) {
           btn.classList.add("episode-button--disabled");
           btn.disabled = true;
@@ -855,6 +856,19 @@
         btn.textContent = "Episode " + ep + (isReleased ? "" : " (Segera)");
         li.appendChild(btn);
         detailEpisodesEl.appendChild(li);
+      }
+    }
+
+    if (detailDownloadEl) {
+      detailDownloadEl.innerHTML = "";
+      if (anime.downloadUrl) {
+        var link = document.createElement("a");
+        link.href = anime.downloadUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "button button--primary";
+        link.textContent = "Download";
+        detailDownloadEl.appendChild(link);
       }
     }
 
