@@ -237,11 +237,40 @@
     }
   ];
 
-  // Map for quick lookup
+  // Map for quick lookup + optional override from CMS (localStorage)
   var animeById = {};
-  for (var i = 0; i < animeList.length; i++) {
+  for (var i = 0; i &lt; animeList.length; i++) {
     animeById[animeList[i].id] = animeList[i];
   }
+
+  var ANIME_STORAGE_KEY = "anime-cms-data-v1";
+
+  function applyAnimeListFromStorage(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    animeList = list;
+    animeById = {};
+    for (var i = 0; i &lt; animeList.length; i++) {
+      var item = animeList[i];
+      if (item &amp;&amp; item.id) {
+        animeById[item.id] = item;
+      }
+    }
+  }
+
+  function loadAnimeFromStorage() {
+    try {
+      if (!("localStorage" in window)) return;
+      var raw = window.localStorage.getItem(ANIME_STORAGE_KEY);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      applyAnimeListFromStorage(parsed);
+    } catch (e) {
+      // ignore parse/storage errors, fall back to built-in data
+    }
+  }
+
+  loadAnimeFromStorage();
 
   // ------------------------------------------------------------
   // DOM helpers
