@@ -2,11 +2,11 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <title>Quiz Interaktif</title>
+  <title>Pixel Quiz</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta
     name="description"
-    content="Website quiz interaktif dengan level dan tingkat kesulitan berbeda serta leaderboard jumlah quiz yang dijawab."
+    content="Quiz interaktif sederhana bergaya pixel art dengan beberapa level dan leaderboard lokal."
   />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
@@ -16,15 +16,8 @@
       <div class="header-inner">
         <div class="brand">
           <span class="brand-mark">Q</span>
-          <span class="brand-text">uiz<span>Play</span></span>
+          <span class="brand-text">PIXEL QUIZ</span>
         </div>
-
-        <nav class="main-nav" aria-label="Navigasi utama">
-          <button class="nav-link is-active" type="button" data-nav-target="home">Beranda</button>
-          <button class="nav-link" type="button" data-nav-target="levels">Level</button>
-          <button class="nav-link" type="button" data-nav-target="leaderboard">Leaderboard</button>
-        </nav>
-
         <div class="header-actions">
           <div class="quiz-user-box">
             <input
@@ -33,7 +26,7 @@
               placeholder="Nama kamu..."
               aria-label="Nama pengguna untuk leaderboard"
             />
-            <button type="button" class="button button--ghost" id="quiz-save-name">
+            <button type="button" class="button button--primary" id="quiz-save-name">
               Simpan
             </button>
           </div>
@@ -42,71 +35,47 @@
     </header>
 
     <main class="page">
-      <section class="hero quiz-hero" aria-label="Pengantar quiz">
-        <div class="hero-main">
-          <div class="hero-label">Quiz Interaktif</div>
-          <h1 class="hero-title">Asah Pengetahuanmu, Naikkan Level!</h1>
-          <p class="hero-description">
-            Pilih level, jawab pertanyaan dengan tingkat kesulitan berbeda, kumpulkan poin, dan naik ke
-            puncak leaderboard berdasarkan jumlah quiz yang berhasil kamu selesaikan.
-          </p>
-
-          <div class="hero-tags quiz-hero-tags">
-            <span class="badge badge-type">Level Mudah · Menengah · Sulit</span>
-            <span class="badge badge-score">Leaderboard Real‑time (per perangkat)</span>
-            <span class="badge badge-quality">Multi-topik</span>
-          </div>
-
-          <div class="hero-actions">
-            <button class="button button--primary" type="button" id="quiz-start-primary">
-              Mulai dari Level 1
-            </button>
-            <button class="button button--ghost" type="button" data-nav-target="levels">
-              Lihat Semua Level
-            </button>
-          </div>
-        </div>
-
-        <div class="hero-side quiz-hero-side">
-          <div class="quiz-hero-card">
-            <div class="quiz-hero-stat">
-              <span class="quiz-hero-stat-label">Total Quiz Selesai</span>
-              <span class="quiz-hero-stat-value" id="stat-total-quizzes">0</span>
-            </div>
-            <div class="quiz-hero-stat">
-              <span class="quiz-hero-stat-label">Jawaban Benar</span>
-              <span class="quiz-hero-stat-value" id="stat-total-correct">0</span>
-            </div>
-            <div class="quiz-hero-stat">
-              <span class="quiz-hero-stat-label">Akurasi</span>
-              <span class="quiz-hero-stat-value" id="stat-accuracy">0%</span>
-            </div>
-          </div>
-        </div>
+      <section class="section section--intro">
+        <h1 class="intro-title">PIXEL QUIZ</h1>
+        <p class="intro-text">
+          Pilih level di sebelah kiri, jawab semua pertanyaan, dan lihat posisi kamu di leaderboard.
+        </p>
       </section>
 
-      <section class="section" id="levels-section">
-        <div class="section-header">
-          <h2 class="section-title">Pilih Level Quiz</h2>
-          <p class="section-subtitle">
-            Setiap level memiliki jumlah soal dan tingkat kesulitan yang berbeda. Selesaikan satu level untuk
-            menambah 1 pada total quiz yang kamu selesaikan.
-          </p>
-        </div>
-        <div class="section-body">
-          <div class="quiz-level-grid" id="quiz-level-grid">
+      <section class="layout">
+        <aside class="panel panel--levels">
+          <h2 class="panel-title">Level</h2>
+          <ul class="level-list" id="level-list">
             <!-- Diisi dari script.js -->
-          </div>
-        </div>
-      </section>
+          </ul>
+          <button class="button button--ghost button--full" type="button" id="btn-start-first">
+            Mulai Level 1
+          </button>
+        </aside>
 
-      <section class="section" id="quiz-section">
-        <div class="section-header">
-          <h2 class="section-title" id="quiz-section-title">Area Quiz</h2>
-          <span class="quiz-level-pill" id="quiz-current-level-label">Belum memilih level</span>
-        </div>
-        <div class="section-body quiz-section-body">
-          <div class="quiz-status-row">
+        <section class="panel panel--quiz">
+          <header class="panel-header">
+            <div>
+              <h2 class="panel-title" id="quiz-level-title">Belum memilih level</h2>
+              <p class="panel-subtitle" id="quiz-level-info">Pilih salah satu level di panel kiri.</p>
+            </div>
+            <div class="quiz-stats">
+              <div class="quiz-stat">
+                <span class="quiz-stat-label">Quiz Selesai</span>
+                <span class="quiz-stat-value" id="stat-total-quizzes">0</span>
+              </div>
+              <div class="quiz-stat">
+                <span class="quiz-stat-label">Benar</span>
+                <span class="quiz-stat-value" id="stat-total-correct">0</span>
+              </div>
+              <div class="quiz-stat">
+                <span class="quiz-stat-label">Akurasi</span>
+                <span class="quiz-stat-value" id="stat-accuracy">0%</span>
+              </div>
+            </div>
+          </header>
+
+          <div class="quiz-top-row">
             <div class="quiz-progress">
               <span id="quiz-progress-text">0 / 0 soal</span>
               <div class="quiz-progress-bar">
@@ -120,38 +89,24 @@
 
           <div id="quiz-card" class="quiz-card quiz-card--empty" aria-live="polite">
             <p class="quiz-empty-text">
-              Pilih level di atas untuk mulai mengerjakan quiz.
+              Pilih level untuk mulai mengerjakan quiz.
             </p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="section" id="leaderboard-section">
-        <div class="section-header">
-          <h2 class="section-title">Leaderboard</h2>
-          <p class="section-subtitle">
-            Peringkat berdasarkan jumlah quiz yang berhasil diselesaikan per pengguna (disimpan di perangkat
-            ini).
+        <aside class="panel panel--leaderboard">
+          <h2 class="panel-title">Leaderboard</h2>
+          <p class="panel-subtitle" id="leaderboard-user-label">
+            Masukkan nama untuk mulai tercatat di leaderboard.
           </p>
-        </div>
-        <div class="section-body">
-          <div class="leaderboard-header-row">
-            <div class="leaderboard-summary">
-              <span id="leaderboard-user-label">Belum ada nama pengguna.</span>
-            </div>
-            <button class="chip" type="button" id="leaderboard-reset">
-              Reset data perangkat
-            </button>
-          </div>
-
           <div class="leaderboard-table-wrapper">
             <table class="leaderboard-table" aria-label="Leaderboard jumlah quiz terbanyak">
               <thead>
                 <tr>
-                  <th>Peringkat</th>
+                  <th>#</th>
                   <th>Nama</th>
-                  <th>Quiz Selesai</th>
-                  <th>Jawaban Benar</th>
+                  <th>Quiz</th>
+                  <th>Benar</th>
                   <th>Akurasi</th>
                 </tr>
               </thead>
@@ -160,13 +115,16 @@
               </tbody>
             </table>
           </div>
-        </div>
+          <button class="button button--ghost button--full" type="button" id="leaderboard-reset">
+            Reset Data
+          </button>
+        </aside>
       </section>
     </main>
 
     <footer class="site-footer">
       <div class="footer-inner">
-        <span>Quiz interaktif contoh. Data tersimpan secara lokal di perangkat kamu.</span>
+        <span>Pixel Quiz · data tersimpan di perangkat ini.</span>
       </div>
     </footer>
   </div>

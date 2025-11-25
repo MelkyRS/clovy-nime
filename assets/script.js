@@ -5,15 +5,12 @@
   // Data quiz
   // ------------------------------------------------------------
 
-  // Tiap level berisi campuran soal mudah/menengah/sulit.
   var quizLevels = [
     {
       id: "level-1",
       title: "Level 1 · Pemula",
       description: "5 soal dasar untuk pemanasan. Cocok untuk mulai mencoba.",
       difficulty: "Mudah",
-      questionCount: 5,
-      colorKey: "orange",
       questions: [
         {
           text: "Ibu kota Indonesia adalah…",
@@ -52,8 +49,6 @@
       title: "Level 2 · Menengah",
       description: "7 soal dengan kombinasi konsep umum dan logika.",
       difficulty: "Menengah",
-      questionCount: 7,
-      colorKey: "purple",
       questions: [
         {
           text: "Manakah yang BUKAN termasuk planet dalam tata surya?",
@@ -109,8 +104,6 @@
       title: "Level 3 · Expert",
       description: "10 soal dengan tingkat kesulitan lebih tinggi dan butuh penalaran.",
       difficulty: "Sulit",
-      questionCount: 10,
-      colorKey: "blue",
       questions: [
         {
           text: "Algoritma pengurutan dengan kompleksitas rata-rata O(n log n) adalah…",
@@ -214,8 +207,6 @@
       title: "Level 4 · Tantangan Campuran",
       description: "8 soal campuran logika, sains, dan pemrograman untuk menguji konsistensi kamu.",
       difficulty: "Campuran",
-      questionCount: 8,
-      colorKey: "teal",
       questions: [
         {
           text: "Jika sebuah array memiliki 10 elemen dan indeks mulai dari 0, indeks elemen terakhir adalah…",
@@ -288,8 +279,8 @@
   // State & penyimpanan lokal
   // ------------------------------------------------------------
 
-  var STORAGE_KEY_USER = "quizplay-username";
-  var STORAGE_KEY_STATS = "quizplay-leaderboard";
+  var STORAGE_KEY_USER = "pixelquiz-username";
+  var STORAGE_KEY_STATS = "pixelquiz-leaderboard";
 
   var currentLevel = null;
   var currentQuestionIndex = 0;
@@ -297,8 +288,6 @@
   var currentCorrectCount = 0;
   var hasAnsweredCurrent = false;
 
-  // Stats global per user (di perangkat ini)
-  // { username, totalQuizzes, totalCorrect, totalQuestions }
   var leaderboard = [];
 
   // ------------------------------------------------------------
@@ -346,9 +335,7 @@
       } else {
         window.localStorage.removeItem(STORAGE_KEY_USER);
       }
-    } catch (e) {
-      // abaikan
-    }
+    } catch (e) {}
   }
 
   function loadLeaderboard() {
@@ -377,9 +364,7 @@
     try {
       if (!("localStorage" in window)) return;
       window.localStorage.setItem(STORAGE_KEY_STATS, JSON.stringify(leaderboard));
-    } catch (e) {
-      // abaikan
-    }
+    } catch (e) {}
   }
 
   function getUserStat(username) {
@@ -422,66 +407,57 @@
   }
 
   // ------------------------------------------------------------
-  // Render level
+  // Level list kiri
   // ------------------------------------------------------------
 
-  function renderLevels() {
-    var grid = $("#quiz-level-grid");
-    if (!grid) return;
-    grid.innerHTML = "";
+  function renderLevelList() {
+    var list = document.getElementById("level-list");
+    if (!list) return;
+    list.innerHTML = "";
 
     quizLevels.forEach(function (level) {
-      var card = createElement("article", "quiz-level-card");
-      card.setAttribute("data-level-id", level.id);
-      if (level.colorKey) {
-        card.classList.add("quiz-level-card--" + level.colorKey);
-      }
-
-      var header = createElement("div", "quiz-level-header");
-      var title = createElement("h3", "quiz-level-title", level.title);
-      var diff = createElement("span", "quiz-level-diff", level.difficulty);
-      header.appendChild(title);
-      header.appendChild(diff);
-
-      var meta = createElement(
-        "p",
-        "quiz-level-meta",
-        level.questionCount + " soal · Kesulitan: " + level.difficulty
-      );
-
-      var desc = createElement("p", "quiz-level-desc", level.description);
-
-      var footer = createElement("div", "quiz-level-footer");
-      var btn = createElement("button", "button button--primary", "Mulai Level Ini");
+      var li = createElement("li", "level-item");
+      var btn = createElement("button", "level-button", level.title);
       btn.type = "button";
       btn.addEventListener("click", function () {
         startLevel(level.id);
+        markActiveLevel(level.id);
       });
-
-      footer.appendChild(btn);
-
-      card.appendChild(header);
-      card.appendChild(meta);
-      card.appendChild(desc);
-      card.appendChild(footer);
-
-      grid.appendChild(card);
+      li.appendChild(btn);
+      list.appendChild(li);
     });
+  }
+
+  function markActiveLevel(levelId) {
+    var list = document.getElementById("level-list");
+    if (!list) return;
+    var buttons = list.querySelectorAll(".level-button");
+    buttons.forEach(function (btn) {
+      btn.classList.remove("level-button--active");
+    });
+
+    var index = quizLevels.findIndex(function (lvl) {
+      return lvl.id === levelId;
+    });
+    if (index === -1) return;
+    var li = list.children[index];
+    if (!li) return;
+    var targetBtn = li.querySelector(".level-button");
+    if (targetBtn) {
+      targetBtn.classList.add("level-button--active");
+    }
   }
 
   // ------------------------------------------------------------
   // Quiz flow
   // ------------------------------------------------------------
 
-  var quizSectionTitleEl = $("#quiz-section-title");
-  var quizCurrentLevelLabelEl = $("#quiz-current-level-label");
-  var quizProgressTextEl = $("#quiz-progress-text");
-  var quizProgressFillEl = $("#quiz-progress-fill");
-  var quizScoreEl = $("#quiz-score");
-  var quizCardEl = $("#quiz-card");
-  var statTotalQuizzesEl = $("#stat-total-quizzes");
-  var statTotalCorrectEl = $("#stat-total-correct");
-  var statAccuracyEl = $("#stat-accuracy");
+  var quizLevelTitleEl = document.getElementById("quiz-level-title");
+  var quizLevelInfoEl = document.getElementById("quiz-level-info");
+  var quizProgressTextEl = document.getElementById("quiz-progress-text");
+  var quizProgressFillEl = document.getElementById("quiz-progress-fill");
+  var quizScoreEl = document.getElementById("quiz-score");
+  var quizCardEl = document.getElementById("quiz-card");
 
   function resetQuizState(level) {
     currentLevel = level;
@@ -648,12 +624,16 @@
     btnReplay.type = "button";
     btnReplay.addEventListener("click", function () {
       startLevel(currentLevel.id);
+      markActiveLevel(currentLevel.id);
     });
 
     var btnNext = createElement("button", "button button--ghost", "Pilih level lain");
     btnNext.type = "button";
     btnNext.addEventListener("click", function () {
-      scrollToSection("levels-section");
+      var levelList = document.getElementById("level-list");
+      if (levelList && levelList.scrollIntoView) {
+        levelList.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
 
     actions.appendChild(btnReplay);
@@ -666,7 +646,7 @@
       var note = createElement(
         "p",
         "quiz-summary-note",
-        "Masukkan nama di pojok kanan atas lalu kerjakan lagi agar progres kamu muncul di leaderboard."
+        "Masukkan nama di bagian atas lalu kerjakan lagi agar progres kamu muncul di leaderboard."
       );
       quizCardEl.appendChild(note);
     }
@@ -689,24 +669,23 @@
 
     resetQuizState(level);
 
-    if (quizSectionTitleEl) {
-      quizSectionTitleEl.textContent = "Area Quiz · " + level.title;
+    if (quizLevelTitleEl) {
+      quizLevelTitleEl.textContent = level.title;
     }
-    if (quizCurrentLevelLabelEl) {
-      quizCurrentLevelLabelEl.textContent =
-        "Level: " + level.title + " (" + (level.difficulty || "Campuran") + ")";
+    if (quizLevelInfoEl) {
+      quizLevelInfoEl.textContent =
+        "Jumlah soal: " + level.questions.length + " · Kesulitan: " + (level.difficulty || "Campuran");
     }
 
     showQuestion();
-    scrollToSection("quiz-section");
   }
 
   // ------------------------------------------------------------
   // Leaderboard
   // ------------------------------------------------------------
 
-  var leaderboardBodyEl = $("#leaderboard-body");
-  var leaderboardUserLabelEl = $("#leaderboard-user-label");
+  var leaderboardBodyEl = document.getElementById("leaderboard-body");
+  var leaderboardUserLabelEl = document.getElementById("leaderboard-user-label");
 
   function renderLeaderboard() {
     if (!leaderboardBodyEl) return;
@@ -749,14 +728,13 @@
     var username = loadUsername().trim();
     if (leaderboardUserLabelEl) {
       if (!username) {
-        leaderboardUserLabelEl.textContent = "Ketik nama kamu di kanan atas untuk mulai tercatat di leaderboard.";
+        leaderboardUserLabelEl.textContent =
+          "Masukkan nama di bagian atas untuk mulai tercatat di leaderboard.";
       } else {
         var stat = getUserStat(username);
         if (!stat) {
           leaderboardUserLabelEl.textContent =
-            "Halo, " +
-            username +
-            ". Kerjakan satu level quiz agar namamu muncul di leaderboard.";
+            "Halo, " + username + ". Kerjakan satu level quiz agar namamu muncul di leaderboard.";
         } else {
           leaderboardUserLabelEl.textContent =
             "Kamu: " +
@@ -773,24 +751,27 @@
   }
 
   function renderHeroStats() {
-    if (!statTotalQuizzesEl || !statTotalCorrectEl || !statAccuracyEl) return;
+    var tEl = document.getElementById("stat-total-quizzes");
+    var cEl = document.getElementById("stat-total-correct");
+    var aEl = document.getElementById("stat-accuracy");
+    if (!tEl || !cEl || !aEl) return;
     var username = loadUsername().trim();
     if (!username) {
-      statTotalQuizzesEl.textContent = "0";
-      statTotalCorrectEl.textContent = "0";
-      statAccuracyEl.textContent = "0%";
+      tEl.textContent = "0";
+      cEl.textContent = "0";
+      aEl.textContent = "0%";
       return;
     }
     var stat = getUserStat(username);
     if (!stat) {
-      statTotalQuizzesEl.textContent = "0";
-      statTotalCorrectEl.textContent = "0";
-      statAccuracyEl.textContent = "0%";
+      tEl.textContent = "0";
+      cEl.textContent = "0";
+      aEl.textContent = "0%";
       return;
     }
-    statTotalQuizzesEl.textContent = String(stat.totalQuizzes);
-    statTotalCorrectEl.textContent = String(stat.totalCorrect);
-    statAccuracyEl.textContent = formatPercent(stat.totalCorrect, stat.totalQuestions);
+    tEl.textContent = String(stat.totalQuizzes);
+    cEl.textContent = String(stat.totalCorrect);
+    aEl.textContent = formatPercent(stat.totalCorrect, stat.totalQuestions);
   }
 
   function resetAllData() {
@@ -798,9 +779,7 @@
       if ("localStorage" in window) {
         window.localStorage.removeItem(STORAGE_KEY_STATS);
       }
-    } catch (e) {
-      // abaikan
-    }
+    } catch (e) {}
     leaderboard = [];
     renderLeaderboard();
     renderHeroStats();
@@ -811,8 +790,8 @@
   // ------------------------------------------------------------
 
   function initUsernameBox() {
-    var input = $("#quiz-username");
-    var saveBtn = $("#quiz-save-name");
+    var input = document.getElementById("quiz-username");
+    var saveBtn = document.getElementById("quiz-save-name");
     var stored = loadUsername();
     if (input) {
       input.value = stored;
@@ -835,48 +814,15 @@
   }
 
   // ------------------------------------------------------------
-  // Navigasi scroll sederhana
+  // Tombol mulai Level 1
   // ------------------------------------------------------------
 
-  function scrollToSection(target) {
-    if (target === "home") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
-    var id = target;
-    if (target === "levels") id = "levels-section";
-    if (target === "leaderboard") id = "leaderboard-section";
-
-    var el = document.getElementById(id);
-    if (el && el.scrollIntoView) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
-
-  function initNavButtons() {
-    var buttons = document.querySelectorAll("[data-nav-target]");
-    if (!buttons.length) return;
-    buttons.forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var target = btn.getAttribute("data-nav-target");
-        if (!target) return;
-        scrollToSection(target);
-        buttons.forEach(function (b) {
-          b.classList.toggle("is-active", b === btn);
-        });
-      });
-    });
-  }
-
-  // ------------------------------------------------------------
-  // Tombol mulai utama
-  // ------------------------------------------------------------
-
-  function initPrimaryStartButton() {
-    var btn = $("#quiz-start-primary");
+  function initStartFirstButton() {
+    var btn = document.getElementById("btn-start-first");
     if (!btn) return;
     btn.addEventListener("click", function () {
       startLevel("level-1");
+      markActiveLevel("level-1");
     });
   }
 
@@ -885,7 +831,7 @@
   // ------------------------------------------------------------
 
   function initLeaderboardResetButton() {
-    var btn = $("#leaderboard-reset");
+    var btn = document.getElementById("leaderboard-reset");
     if (!btn) return;
     btn.addEventListener("click", function () {
       if (window.confirm("Yakin ingin menghapus semua data leaderboard di perangkat ini?")) {
@@ -900,10 +846,9 @@
 
   function init() {
     loadLeaderboard();
-    renderLevels();
     initUsernameBox();
-    initNavButtons();
-    initPrimaryStartButton();
+    renderLevelList();
+    initStartFirstButton();
     initLeaderboardResetButton();
     renderLeaderboard();
     renderHeroStats();
