@@ -74,7 +74,7 @@
         },
         {
           text: "Dalam HTML, elemen untuk membuat tautan adalah…",
-          options: ["&lt;link&gt;", "&lt;href&gt;", "&lt;a&gt;", "&lt;url&gt;"],
+          options: ["<link>", "<href>", "<a>", "<url>"],
           correctIndex: 2,
           difficulty: "Menengah"
         },
@@ -206,6 +206,79 @@
           ],
           correctIndex: 2,
           difficulty: "Sulit"
+        }
+      ]
+    },
+    {
+      id: "level-4",
+      title: "Level 4 · Tantangan Campuran",
+      description: "8 soal campuran logika, sains, dan pemrograman untuk menguji konsistensi kamu.",
+      difficulty: "Campuran",
+      questionCount: 8,
+      colorKey: "teal",
+      questions: [
+        {
+          text: "Jika sebuah array memiliki 10 elemen dan indeks mulai dari 0, indeks elemen terakhir adalah…",
+          options: ["9", "10", "8", "11"],
+          correctIndex: 0,
+          difficulty: "Menengah"
+        },
+        {
+          text: "Kecepatan cahaya di ruang hampa sekitar…",
+          options: [
+            "3.000 km/s",
+            "30.000 km/s",
+            "300.000 km/s",
+            "3.000.000 km/s"
+          ],
+          correctIndex: 2,
+          difficulty: "Sulit"
+        },
+        {
+          text: "Di JavaScript, keyword yang digunakan untuk mendeklarasikan variabel dengan cakupan blok adalah…",
+          options: ["var", "let", "function", "const"],
+          correctIndex: 1,
+          difficulty: "Menengah"
+        },
+        {
+          text: "Konsep \"responsive design\" pada web bertujuan untuk…",
+          options: [
+            "Mempercepat server",
+            "Membuat tampilan menyesuaikan berbagai ukuran layar",
+            "Mengurangi ukuran file gambar",
+            "Meningkatkan ranking SEO"
+          ],
+          correctIndex: 1,
+          difficulty: "Mudah"
+        },
+        {
+          text: "Dalam machine learning, overfitting terjadi ketika…",
+          options: [
+            "Model terlalu sederhana sehingga tidak bisa belajar pola",
+            "Model belajar terlalu spesifik pada data latih dan sulit generalisasi",
+            "Data latih sangat sedikit",
+            "Data latih sangat besar"
+          ],
+          correctIndex: 1,
+          difficulty: "Sulit"
+        },
+        {
+          text: "Struktur kontrol yang mengulang blok kode selama kondisi bernilai true adalah…",
+          options: ["if", "switch", "while", "return"],
+          correctIndex: 2,
+          difficulty: "Mudah"
+        },
+        {
+          text: "Satuan untuk mengukur frekuensi adalah…",
+          options: ["Newton", "Joule", "Hertz", "Pascal"],
+          correctIndex: 2,
+          difficulty: "Menengah"
+        },
+        {
+          text: "Istilah untuk gaya desain antarmuka yang menekankan kesederhanaan dan ruang kosong adalah…",
+          options: ["Skeuomorphic", "Flat design", "Neumorphic", "Retro UI"],
+          correctIndex: 1,
+          difficulty: "Menengah"
         }
       ]
     }
@@ -360,6 +433,9 @@
     quizLevels.forEach(function (level) {
       var card = createElement("article", "quiz-level-card");
       card.setAttribute("data-level-id", level.id);
+      if (level.colorKey) {
+        card.classList.add("quiz-level-card--" + level.colorKey);
+      }
 
       var header = createElement("div", "quiz-level-header");
       var title = createElement("h3", "quiz-level-title", level.title);
